@@ -11,6 +11,10 @@ A self-contained, one-command demo template for an enterprise **"ChatGPT for you
 
 *The default **Retail Analyst** chat answering demo prompt 5. It reads the business rules, checks the schema, validates the SQL with `dry_run`, then runs it — every number comes from a real query. Search, Artifacts and the Wren tools are pre-enabled in the input bar.*
 
+![Retail Analyst comparing Hong Kong, Singapore and Taipei store sales growth against official retail statistics — 14 actions: 11 Wren tool calls and 3 web searches, with cited sources](docs/screencap-2.png)
+
+*Demo prompt 6 — MCP and web search in one answer. The analyst pulls 12-month store revenue through Wren (11 tool calls), looks up each market's official retail sales trend with web search (3 calls), and compares the two with inline citations (e.g. censtatd.gov.hk for Hong Kong). The mock warehouse has no orders for the Singapore and Taipei stores, and the analyst says so ("NO DATA available") instead of inventing numbers. It only compares the market it has real figures for.*
+
 **Try it:** `git clone` → `./setup.sh` → open http://localhost:3080 → sign up → ask a question. Details in [Quick start](#4-quick-start).
 
 Everything runs locally in Docker Compose. The warehouse, semantic layer and search engine stay on the box. **What does leave it:** prompts, tool calls and query results go to the LLM provider (OpenRouter), web searches go out to the engines SearXNG queries (Bing, Wikipedia, DuckDuckGo), and result pages are fetched through Keenable's public scraper. For fully offline use, point LibreChat at a local model and drop web search.
@@ -110,7 +114,8 @@ librechat-wren-demo/
 ├── .env.example                # secrets template → copy to .env (git-ignored)
 ├── setup.sh                    # one-command setup: .env, build, start, verify
 ├── docs/
-│   └── screencap.png           # README screenshot
+│   ├── screencap.png           # README screenshot (Wren SQL)
+│   └── screencap-2.png         # README screenshot (Wren + web search)
 ├── scripts/
 │   ├── lib/env.sh              # .env read/write helpers
 │   ├── gen-env.sh              # generates every secret in .env
@@ -233,6 +238,7 @@ docker compose down -v     # stop and delete all data and accounts
 | 3 | "Which stores have the highest return rates, and which carrier ships those orders?" | Multi-join SQL → bar chart |
 | 4 | "Show revenue by customer loyalty tier as a pie chart." | Single-model aggregation → chart |
 | 5 | "What's our gross margin by product category?" | Uses `unit_cost` semantic definition (see screenshot above) |
+| 6 | "Compare sales growth at our Hong Kong, Singapore and Taipei stores over the last 12 months with each market's official retail sales trend. Are we beating or lagging the market?" | Wren SQL + web search with cited sources; reports missing store data instead of guessing (see second screenshot above) |
 
 ### Verifying services individually
 
