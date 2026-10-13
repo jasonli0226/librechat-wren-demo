@@ -1,0 +1,16 @@
+use_default_settings: true
+server:
+  secret_key: "overridden-by-SEARXNG_SECRET-env"
+  limiter: false
+  image_proxy: false
+search:
+  formats:
+    - html
+    - json
+engines:
+  - name: duckduckgo
+    disabled: false
+  - name: wikipedia
+    disabled: false
+  - name: bing
+    disabled: false

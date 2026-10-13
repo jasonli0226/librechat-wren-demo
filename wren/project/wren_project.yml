@@ -1,0 +1,6 @@
+schema_version: 5
+name: retail
+catalog: wren
+schema: public
+data_source: postgres
+profile: retail

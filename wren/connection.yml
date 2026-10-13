@@ -1,0 +1,8 @@
+# Wren connection profile for the mock retail Postgres.
+# ${VAR} references are expanded from env at connection time (never stored in plaintext).
+datasource: postgres
+host: retail-postgres
+port: "5432"
+database: retail
+user: wren_ro
+password: ${WREN_RO_PASSWORD}

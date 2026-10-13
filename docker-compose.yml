@@ -1,0 +1,107 @@
+services:
+  # ---------- Mock retail data warehouse ----------
+  retail-postgres:
+    image: postgres:16-alpine
+    container_name: retail-postgres
+    environment:
+      POSTGRES_DB: retail
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${RETAIL_DB_PASSWORD:?run scripts/gen-env.sh}
+      WREN_RO_PASSWORD: ${WREN_RO_PASSWORD:?run scripts/gen-env.sh}
+    volumes:
+      - ./retail-db/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - ./retail-db/02-readonly-role.sh:/docker-entrypoint-initdb.d/02-readonly-role.sh:ro
+      - retail_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d retail"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # ---------- Wren AI MCP server (semantic layer + governed SQL) ----------
+  wren-mcp:
+    build: ./wren
+    container_name: wren-mcp
+    depends_on:
+      retail-postgres:
+        condition: service_healthy
+    environment:
+      WREN_RO_PASSWORD: ${WREN_RO_PASSWORD:?run scripts/gen-env.sh}
+      PG_HOST: retail-postgres
+      PG_PORT: "5432"
+      PG_DB: retail
+      PG_USER: wren_ro
+      PG_PASSWORD: ${WREN_RO_PASSWORD:?run scripts/gen-env.sh}
+      MDL_OUT_DIR: /wren/project
+      # Host headers the MCP server accepts (DNS-rebinding protection stays on)
+      MCP_ALLOWED_HOSTS: wren-mcp:*,localhost:*,127.0.0.1:*
+      # Default run_sql row cap (wrenai's built-in default is 1000)
+      MCP_ROW_LIMIT: "200"
+    volumes:
+      - wren_home:/wren/home
+    ports:
+      # Loopback only: the MCP port has no auth. Exposed for curl/MCP inspector testing.
+      - "127.0.0.1:7080:7080"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import socket; socket.create_connection(('localhost', 7080), 2)"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+    restart: unless-stopped
+
+  # ---------- Web search ----------
+  searxng:
+    image: searxng/searxng:2026.10.13-22c64b8d3
+    container_name: searxng
+    environment:
+      SEARXNG_BASE_URL: http://localhost:8888/
+      SEARXNG_SECRET: ${SEARXNG_SECRET:?run scripts/gen-env.sh}
+    volumes:
+      - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
+    ports:
+      - "127.0.0.1:8888:8080"
+    restart: unless-stopped
+
+  # ---------- Chat UI ----------
+  mongodb:
+    image: mongo:7
+    container_name: librechat-mongo
+    volumes:
+      - mongo_data:/data/db
+    restart: unless-stopped
+
+  librechat:
+    image: librechat/librechat:v0.8.8
+    container_name: librechat
+    depends_on:
+      mongodb:
+        condition: service_started
+      searxng:
+        condition: service_started
+      wren-mcp:
+        condition: service_healthy   # LibreChat only connects to MCP servers at startup
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3080
+      MONGO_URI: mongodb://mongodb:27017/LibreChat
+      ALLOW_REGISTRATION: "true"   # demo mode: open email sign-up (set false once your account exists)
+      OPENROUTER_KEY: ${OPENROUTER_KEY}
+      CREDS_KEY: ${CREDS_KEY}
+      CREDS_IV: ${CREDS_IV}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      SEARXNG_INSTANCE_URL: http://searxng:8080
+      SCHEDULES_SINGLE_PROCESS: "true"   # demo runs exactly one LibreChat replica
+    volumes:
+      - ./librechat/librechat.yaml:/app/librechat.yaml:ro
+      - librechat_uploads:/app/client/public/images
+    ports:
+      - "127.0.0.1:3080:3080"
+    restart: unless-stopped
+
+volumes:
+  retail_pgdata:
+  mongo_data:
+  wren_home:
+  librechat_uploads:

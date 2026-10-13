@@ -1,0 +1,119 @@
+version: 1.3.17
+cache: true
+
+# Register free email logins (demo mode). Switch to emailLogin:false + LDAP/OAuth for real use.
+registration:
+  socialLogins: []
+
+endpoints:
+  custom:
+    - name: "OpenRouter"
+      apiKey: "${OPENROUTER_KEY}"
+      baseURL: "https://openrouter.ai/api/v1"
+      models:
+        # All of these support tool calling, which the Wren MCP tools and web search need.
+        default:
+          [
+            "deepseek/deepseek-chat",
+            "z-ai/glm-4.6",
+            "z-ai/glm-4.5-air",
+          ]
+        fetch: false
+      titleConvo: true
+      titleModel: "deepseek/deepseek-chat"
+      summarize: false
+      dropParams: ["stop", "user", "frequency_penalty", "presence_penalty"]
+
+# Preset "Retail Analyst" chats with the Wren tools, web search and Artifacts
+# (chart rendering) already switched on. Without Artifacts the model never gets
+# LibreChat's artifact format and can only draw ASCII charts.
+# enforce: false keeps the raw OpenRouter models selectable as well.
+modelSpecs:
+  enforce: false
+  prioritize: true
+  list:
+    - name: "retail-analyst-glm"
+      label: "Retail Analyst (GLM-4.6)"
+      description: "Answers questions over the retail warehouse and charts the results"
+      default: true
+      showOnLanding: true
+      mcpServers: ["wren"]
+      webSearch: true
+      artifacts: "default"
+      conversation_starters:
+        - "How do monthly sales revenue trends look over the past 12 months? Chart it."
+        - "Which stores have the highest return rates? Show a bar chart."
+        - "Show revenue by customer loyalty tier as a pie chart."
+        - "What's our gross margin by product category?"
+      preset:
+        endpoint: "OpenRouter"
+        model: "z-ai/glm-4.6"
+        temperature: 0.2
+        promptPrefix: &analyst_prompt |
+          You are a retail analytics assistant connected to the company warehouse
+          through the Wren MCP tools.
+
+          1. At the start of every conversation, call `get_instructions` once and
+             follow those business rules (metric definitions, date semantics).
+          2. Never guess table or column names: check `describe_schema` or
+             `describe_model` before writing SQL.
+          3. Every number you state or chart MUST come from a `run_sql` result in
+             this conversation. Never estimate, sample, or invent figures. If you
+             do not have the data, query it first.
+          4. "This month", "last quarter" etc. are relative to the latest
+             order_date in the data, not today's date. Query MAX(order_date) first.
+          5. Aggregate in SQL (GROUP BY, SUM, COUNT). Never SELECT * or pull raw
+             rows to summarise them yourself; keep results under 200 rows.
+          6. To visualise, create a React artifact using recharts, with the
+             query results embedded as a data array: LineChart for trends over
+             time, BarChart for comparing categories, PieChart for share of
+             total. Never draw ASCII or text charts.
+          7. Show the SQL you ran in a code block beneath the answer.
+    - name: "retail-analyst-deepseek"
+      label: "Retail Analyst (DeepSeek V3)"
+      description: "Same analyst, DeepSeek model"
+      mcpServers: ["wren"]
+      webSearch: true
+      artifacts: "default"
+      preset:
+        endpoint: "OpenRouter"
+        model: "deepseek/deepseek-chat"
+        temperature: 0.2
+        promptPrefix: *analyst_prompt
+
+# Built-in web search backed by our self-hosted SearXNG.
+# Keenable scrapes result pages keylessly (public endpoint, rate-limited);
+# reranking is skipped because every reranker needs an API key.
+webSearch:
+  searchProvider: searxng
+  searxngInstanceUrl: "${SEARXNG_INSTANCE_URL}"
+  scraperProvider: keenable
+  rerankerType: none
+  searxngSearchOptions:
+    # Must match engines enabled in searxng/settings.yml. DuckDuckGo often serves
+    # CAPTCHAs to self-hosted instances, so it is not listed first.
+    engines:
+      - bing
+      - wikipedia
+      - duckduckgo
+  # Private Docker hostnames are blocked by LibreChat's SSRF guard unless listed.
+  allowedAddresses:
+    - "searxng:8080"
+
+mcpSettings:
+  allowedAddresses:
+    - "wren-mcp:7080"
+
+# MCP servers
+mcpServers:
+  wren:
+    type: streamable-http
+    url: http://wren-mcp:7080/mcp
+    title: Wren Retail Data
+    description: "Governed text-to-SQL over the mock retail warehouse via Wren AI"
+    # Wren sends no instructions in its MCP handshake, so point the agent at its
+    # get_instructions tool, which serves wren/project/knowledge/rules/*.md.
+    serverInstructions: |
+      Before answering any data question, call `get_instructions` once for the
+      business rules (metric definitions, date semantics, chart policy), then
+      inspect the schema with `describe_schema` before writing SQL.
