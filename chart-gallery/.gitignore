@@ -1,0 +1,10 @@
+api/.venv/
+api/.coverage
+__pycache__/
+web/node_modules/
+web/dist/
+web/coverage/
+web/public/models/
+web/public/ort/
+web/test-results/
+web/playwright-report/
