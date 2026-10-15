@@ -33,7 +33,10 @@ const SEEDS = [
 ]
 
 test.beforeAll(async ({ request }) => {
-  expect(token.length, 'set CHART_GALLERY_TOKEN from .env').toBeGreaterThanOrEqual(32)
+  expect(token.length, 'CHART_GALLERY_TOKEN must be set').toBeGreaterThanOrEqual(32)
+  // The seeds carry made-up numbers: only ever write them into a fresh, throwaway gallery.
+  const existing = await (await request.get('/api/charts')).json()
+  expect(existing.data, 'refusing to seed made-up charts into a gallery that already has charts').toEqual([])
   for (const seed of SEEDS) {
     const response = await request.post('/internal/charts', { data: seed, headers: { Authorization: `Bearer ${token}` } })
     expect(response.ok()).toBeTruthy()

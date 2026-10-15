@@ -153,7 +153,7 @@ librechat-wren-demo/
 - **Related charts** — ranked in a Web Worker with [semantic-state](https://github.com/jasonli0226/semantic-state): title + description embeddings (`Xenova/all-MiniLM-L6-v2`) plus a small boost for charts that query the same tables. While the model loads, the page ranks by shared tables only. The model is baked into the gallery image and served from it; chart text never leaves the browser and no CDN is contacted.
 - **Security** — writes need `CHART_GALLERY_TOKEN` (generated into `.env`); the read API and page are open but bound to `127.0.0.1`.
 - **Schema changes** — there are no migrations. After a breaking change to the `charts` table, wipe the volume: `docker compose down && docker volume rm librechat-wren-demo_gallery_data`.
-- **Tests** — `cd chart-gallery/api && uv run pytest`, `cd chart-gallery/web && npm test`, `uv run --no-project --with pytest --with httpx --with "mcp<2" pytest wren/tests`, E2E: `npm run e2e` in `chart-gallery/web` against a running stack (needs `CHART_GALLERY_TOKEN` from `.env`).
+- **Tests** — `cd chart-gallery/api && uv run pytest`, `cd chart-gallery/web && npm test`, `uv run --no-project --with pytest --with httpx --with "mcp<2" pytest wren/tests`, E2E: `npm run e2e` in `chart-gallery/web` (starts its own throwaway gallery on port 3091 with a fresh database; the compose stack's gallery is never touched).
 
 ### Key design decisions
 
