@@ -153,7 +153,8 @@ librechat-wren-demo/
 - **Related charts** — ranked in a Web Worker with [semantic-state](https://github.com/jasonli0226/semantic-state): title + description embeddings (`Xenova/all-MiniLM-L6-v2`) plus a small boost for charts that query the same tables. While the model loads, the page ranks by shared tables only. The model is baked into the gallery image and served from it; chart text never leaves the browser and no CDN is contacted.
 - **Security** — writes need `CHART_GALLERY_TOKEN` (generated into `.env`); the read API and page are open but bound to `127.0.0.1`.
 - **Schema changes** — there are no migrations. After a breaking change to the `charts` table, wipe the volume: `docker compose down && docker volume rm librechat-wren-demo_gallery_data`.
-- **Tests** — `cd chart-gallery/api && uv run pytest`, `cd chart-gallery/web && npm test`, `uv run --no-project --with pytest --with httpx --with "mcp<2" pytest wren/tests`, E2E: `npm run e2e` in `chart-gallery/web` (starts its own throwaway gallery on port 3091 with a fresh database; the compose stack's gallery is never touched).
+- **Host check** — the gallery only answers `Host` headers in `GALLERY_ALLOWED_HOSTS` (default `localhost,127.0.0.1,chart-gallery`), so a DNS-rebinding page can't read chart data.
+- **Testing** — see [Testing the chart gallery](#testing-the-chart-gallery) and [Automated tests](#automated-tests).
 
 ### Key design decisions
 
@@ -221,17 +222,18 @@ cp .env.example .env
 # edit .env → set OPENROUTER_KEY
 ./scripts/gen-env.sh              # fills DB passwords, SearXNG secret, LibreChat crypto/JWT secrets
 docker compose up -d --build --wait
-./scripts/smoke-test.sh           # PASS/FAIL for search, MDL, MCP, read-only role, LibreChat
+./scripts/smoke-test.sh           # PASS/FAIL for search, MDL, MCP, read-only role, LibreChat, chart gallery
 ```
 </details>
 
-Ports 3080, 7080 and 8888 must be free on the host (all bound to `127.0.0.1`). First boot takes a few minutes (image pulls + `wren context build`).
+Ports 3080, 3090, 7080 and 8888 must be free on the host (all bound to `127.0.0.1`). First boot takes a few minutes (image pulls + `wren context build`).
 
 Then open **http://localhost:3080**:
 
 1. Register a local account (the first account becomes admin)
 2. Start a new chat with **Retail Analyst (GLM-4.6)** — the default model spec. It comes with the Wren MCP tools, web search and Artifacts (chart rendering) switched on, plus an analyst system prompt (`modelSpecs` in `librechat/librechat.yaml`)
 3. Ask the demo questions below
+4. Open **http://localhost:3090** to browse the saved charts and their related-chart suggestions
 
 Raw OpenRouter models stay selectable, but they have no tools or Artifacts enabled unless you turn them on per chat.
 
@@ -256,6 +258,59 @@ docker compose down -v     # stop and delete all data and accounts
 | 5 | "What's our gross margin by product category?" | Uses `unit_cost` semantic definition (see screenshot above) |
 | 6 | "Compare sales growth at our Hong Kong, Singapore and Taipei stores over the last 12 months with each market's official retail sales trend. Are we beating or lagging the market?" | Wren SQL + web search with cited sources; reports missing store data instead of guessing (see second screenshot above) |
 
+### Testing the chart gallery
+
+Ask these in a **Retail Analyst** chat. Every chart reply should end with `Saved to gallery: http://localhost:3090/charts/<id>`. The prompts come in topic clusters so the related-chart suggestions have something to find.
+
+| Cluster | Prompts | Tables they likely share |
+|---|---|---|
+| A — stores | 1. "Which stores have the highest return rates? Show a bar chart."<br>2. "Show total revenue by store as a bar chart."<br>3. "Compare average order value across stores. Bar chart." | `stores`, `orders` |
+| B — trends over time | 4. "How do monthly sales revenue trends look over the past 12 months? Chart it."<br>5. "Show the monthly number of orders over the last year as a line chart."<br>6. "Chart monthly revenue and monthly order count together as a line chart with two series." | `orders` |
+| C — customers | 7. "Show revenue by customer loyalty tier as a pie chart."<br>8. "How many customers are in each loyalty tier? Pie chart." | `customers` |
+| D — products | 9. "What's our gross margin by product category? Bar chart."<br>10. "Top 10 products by revenue, as a bar chart." | `products`, `order_items` |
+| Off-topic | 11. "Show current stock on hand by store from inventory as a bar chart."<br>12. "Break down payments by payment status as a pie chart." | `inventory` / `payments` |
+
+Then open http://localhost:3090:
+
+- One card per chart; the filter box narrows by title and description.
+- Chart 1's page lists 2 and 3 as related; chart 4 lists 5 and 6; chart 7 lists 8. Each related item says why: "similar topic" and/or "shares `stores`".
+- Chart 11 may list cluster A charts (it shares `stores`), but lower down: the table boost is small next to the meaning of the title and description.
+- On the first visit after a hard refresh, the related list may show "refining…" for a moment (ranked by shared tables only) until the embedding model loads from the gallery.
+
+Edge cases:
+
+| Prompt | Expected |
+|---|---|
+| Re-send prompt 1 word for word | Same gallery id (status `updated`), no duplicate card |
+| Prompt 7, but ask for a bar chart | New chart: the same SQL as a different chart type is a separate chart |
+| "Show revenue vs order count per store as a scatter plot." | `save_chart` refuses (line, bar, pie only); the reply says the chart was not saved |
+| "Show daily revenue for every day in the data, line chart." | More than 200 rows → `save_chart` asks to aggregate; the model retries weekly/monthly or says it was not saved |
+| "What's our total revenue this year?" | A number, no chart → nothing saved |
+| "What's the capital of France?" | No SQL, no chart → nothing saved |
+| "Search the web for Hong Kong retail sales trends in 2026." | Web search only → nothing saved |
+
+To start the gallery from scratch: `docker compose down && docker volume rm librechat-wren-demo_gallery_data && docker compose up -d --wait`.
+
+### Automated tests
+
+```bash
+# Gallery API (normalizer, repository, HTTP API, auth, Host check)
+cd chart-gallery/api && uv run pytest --cov=gallery
+
+# Gallery web app (rendering, pages, related-chart ranking)
+cd chart-gallery/web && npm ci && npm test && npm run build
+
+# save_chart tool
+uv run --no-project --with pytest --with httpx --with "mcp<2" pytest wren/tests
+
+# Browser E2E: starts its own throwaway gallery on :3091 with a fresh database
+# (the compose stack's gallery is never touched; seeds use made-up numbers)
+cd chart-gallery/web && npx playwright install chromium && npm run e2e
+
+# Whole running stack, including the gallery and save_chart registration
+./scripts/smoke-test.sh
+```
+
 ### Verifying services individually
 
 `./scripts/smoke-test.sh` checks everything at once. To poke at each service by hand:
@@ -271,6 +326,10 @@ curl -s http://localhost:7080/mcp -X POST \
 
 # LibreChat health
 curl -s http://localhost:3080/health
+
+# Chart gallery: health and saved charts
+curl -s http://localhost:3090/healthz
+curl -s http://localhost:3090/api/charts | head -c 300
 ```
 
 > If the MCP handshake 404s, check the path printed in the `wren-mcp` container banner at startup (`docker compose logs wren-mcp`) and mirror it in `librechat/librechat.yaml`. A `421 Misdirected Request` means the Host header isn't in `MCP_ALLOWED_HOSTS`.
@@ -297,6 +356,11 @@ curl -s http://localhost:3080/health
 | SQL errors mid-chat | Read the structured error hint the agent receives; adjust `knowledge/rules/*.md` rather than only re-prompting |
 | Chart card appears but no chart | Click the card — model-written artifacts don't auto-open. The preview loads CodeSandbox's bundler in your browser, so it needs internet access |
 | Charts not rendering / ASCII charts | Use a **Retail Analyst** model spec (Artifacts preset on). Chats started on a raw model, or before a config change, keep their old settings — start a new chat |
+| Chart drawn but no "Saved to gallery" link | Check the reply's tool calls for `save_chart`. Missing → `docker compose restart librechat` (it loads MCP tools at startup) and start a new chat; present with `saved: false` → the error says what to fix (unsupported chart type, unknown column, >200 rows) |
+| `save_chart` says "cannot reach the chart gallery" | `docker compose ps chart-gallery`, `docker compose logs chart-gallery`; `CHART_GALLERY_TOKEN` must be the same for `wren-mcp` and `chart-gallery` (both read it from `.env`) |
+| Gallery answers `400 Invalid host header` | Open it as `http://localhost:3090` or `http://127.0.0.1:3090`, or add the host to `GALLERY_ALLOWED_HOSTS` |
+| Related charts stay on "refining…" | The embedding model didn't load: check the browser console for 404s under `/models/` or `/ort/` and rebuild the image (`docker compose up -d --build chart-gallery`). The table-overlap ranking keeps working meanwhile |
+| `npm run e2e` says "refusing to seed made-up charts" | E2E pointed at a gallery that already has charts; run it through `npm run e2e` (it starts its own gallery on :3091) |
 | Model quotes numbers it never queried | The analyst prompt forbids it; if it persists, switch spec (GLM-4.6 follows tool rules more reliably) and check the reply's tool calls |
 
 ## 7. Known caveats
@@ -307,6 +371,9 @@ curl -s http://localhost:3080/health
 - LibreChat email registration is open (`ALLOW_REGISTRATION: "true"`, demo convenience) — set it to `"false"` once your account exists, and before exposing anything publicly.
 - Chart artifacts open on click, not automatically (LibreChat v0.8.8 behaviour for model-written artifacts).
 - WrenAI moves fast (CLI-first since v0.8). `wren/Dockerfile` pins `wrenai==0.15.0` and `mcp<2` (wrenai 0.15 imports `FastMCP`, which mcp 2.x renamed). `serve_mcp.py` patches a Host-header bug and can go once upstream fixes it.
+- The chart gallery's read API and pages have no login: anyone who can reach `127.0.0.1:3090` sees every saved chart. Only writes need the token.
+- The LibreChat footer's "Chart gallery" link (`CUSTOM_FOOTER`) shows only for signed-in users.
+- The gallery's first page load downloads the ~23 MB embedding model from the gallery itself (then browser-cached). The list page starts it too, as a warm-up for the related-chart suggestions.
 - `product_categories.parent_id` (self-referencing FK) is not modelled as a relationship; hierarchy queries need hand-written self-joins.
 
 ## 8. References
