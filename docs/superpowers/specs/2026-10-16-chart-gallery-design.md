@@ -82,14 +82,33 @@ per `y_fields` entry (1–5). Pie: `x_field` is the slice label, `y_fields[0]` t
   lives in its own module (e.g. `wren/scripts/chart_tool.py`) so it can be unit-tested without
   starting the server.
 - Inputs: `title` (≤120), `description` (≤500), `chart_type`, `sql`, `x_field`, `y_fields`.
-- Executes SQL with the same Wren call `run_sql` uses. The exact internal API is confirmed
-  while planning by reading `wren.mcp_server` in `wrenai==0.15.0`.
+- Executes the **original** SQL (never the normalized form) with the same call `run_sql`
+  uses: `wren.mcp_server._query_with_limit_probe(ctx, sql, 200)` in `wrenai==0.15.0`. It
+  returns `{columns, rows, truncated}`; `columns` are the result-set column names and values
+  have already passed Wren's `_normalize_value` (`Decimal` → float, dates → ISO strings,
+  NaN/inf → `None`).
+- Runs as the SELECT-only `wren_ro` role (`retail-db/02-readonly-role.sh`), so re-execution
+  cannot change warehouse state.
+- Re-execution means the gallery stores the result at save time. If the warehouse changed
+  between the analyst's `run_sql` and `save_chart`, the gallery shows the newer numbers. The
+  demo warehouse is static, so this is accepted; "numbers are real" outranks "numbers match
+  the chat byte for byte".
+- Validation, all against the **result set**, not the SQL text:
+  - `chart_type` must be `line`, `bar` or `pie`. Anything else (area, scatter, …) is rejected
+    with "save_chart supports line, bar, pie; the chart was not saved". The chat answer and
+    its artifact are unaffected.
+  - `x_field` and every `y_fields` entry must be in `columns` (exact match, as Postgres
+    returns them); otherwise the message lists the available columns.
+  - Numeric y: every non-null value is a Python `int` or `float` and not `bool`. No string
+    coercion: `money` or formatted text (`'$1,234.56'`) is rejected with a hint to cast to
+    `numeric` in SQL. `None` is allowed (gap in the series).
+  - `truncated` must be false; otherwise the message asks to aggregate further.
 - Env: `CHART_GALLERY_URL` (internal, e.g. `http://chart-gallery:3090`),
   `CHART_GALLERY_TOKEN`, `CHART_GALLERY_PUBLIC_URL` (e.g. `http://localhost:3090`, used to
   build the link returned to the model).
 - Errors returned as a clear tool message, never an exception that breaks the chat: SQL error,
-  unknown field (lists available columns), non-numeric y field, wrong y count for pie, gallery
-  unreachable or rejecting the request.
+  any validation failure above, wrong y count for pie, gallery unreachable or rejecting the
+  request.
 - New dependency: `httpx` (or stdlib `urllib`) in `wren/Dockerfile`.
 
 ### 4.2 `chart-gallery` service
@@ -118,7 +137,16 @@ New directory `chart-gallery/`:
 | `rows` | TEXT (JSON array of objects, ≤200) |
 | `created_at`, `updated_at` | TEXT (ISO 8601 UTC) |
 
-Database file on Docker volume `gallery_data`; schema created on startup if missing.
+Database file on Docker volume `gallery_data`; schema created on startup if missing. There
+are no migrations: a breaking schema change means wiping the volume
+(`docker compose down` then `docker volume rm <project>_gallery_data`), noted in the README.
+
+Concurrency: Uvicorn runs with **one worker**, and the connection enables
+`PRAGMA journal_mode=WAL` and `busy_timeout=5000` on open. Writes are rare (one per saved
+chart), so one writer is enough.
+
+`normalized_sql` is used only for the dedup key. It is never executed and never compared with
+`x_field`/`y_fields`.
 
 #### SQL normalization and dedup
 
@@ -139,7 +167,7 @@ All responses use the envelope `{ "success": bool, "data": ..., "error": string 
 | Method & path | Auth | Behaviour |
 |---|---|---|
 | `POST /internal/charts` | `Authorization: Bearer <CHART_GALLERY_TOKEN>`, constant-time compare | Validate, normalize, upsert. 200 `{id, url, status}`. 401 on missing/wrong token, 422 on invalid body |
-| `GET /api/charts` | none | All charts, newest `updated_at` first, **without** `rows` and `sql`: `id, title, description, chart_type, tables, updated_at` |
+| `GET /api/charts` | none | All charts, newest `updated_at` first, **without** `rows` and `sql`: `id, title, description, chart_type, tables, updated_at`. No pagination: about 300 bytes per chart, and related-chart ranking needs the whole set on the client anyway. Revisit past ~5,000 charts |
 | `GET /api/charts/{id}` | none | Full record incl. `rows`, `sql`, fields. 404 if missing |
 | `GET /healthz` | none | 200 when the DB is reachable |
 
@@ -164,15 +192,24 @@ exact version `0.1.0-experimental.1`, `@huggingface/transformers` for the embedd
 #### Ranking
 
 - Embedding text per chart: `title + ". " + description`, embedded in a Web Worker
-  (semantic-state's transformers.js worker setup, default English model).
+  (semantic-state's transformers.js worker setup, default English model; exact model id
+  confirmed while planning).
+- **Model served locally.** The Docker build downloads the model weights (~23 MB) into the
+  image, and the gallery serves them under `/models/`. The worker sets transformers.js
+  `env.allowRemoteModels = false` and `env.localModelPath = "/models/"`, so the browser never
+  contacts Hugging Face. Only the image build needs internet, as it already does for pip/npm.
 - `score = cosine(embedding) + TABLE_BOOST × jaccard(tables)`, with `TABLE_BOOST = 0.15`
   defined in one module so it can be tuned. The current chart is excluded.
 - Implemented with semantic-state's `useSimilar` (or nearest equivalent; exact API confirmed
   while planning) plus a custom scorer for the boost. The scorer is a pure function, tested
   on its own.
-- Before the model is ready (first load downloads ~23 MB, then browser-cached): related list
-  ranked by table overlap only, labelled "refining…", replaced when embeddings are ready.
-  If the model fails to load, the table-overlap list stays and no error wall is shown.
+- Before the model is ready (first load fetches ~23 MB from the gallery, then browser-cached):
+  related list ranked by table overlap only, labelled "refining…", replaced when embeddings
+  are ready.
+- If the model fails to load, the worker posts one error message and stops. There is no retry.
+  The table-overlap list stays (the "refining…" label is removed) and no error wall is shown.
+  Model loading and embedding run only in the worker, so a failure never blocks the main
+  thread.
 
 ## 5. Config and docs changes
 
@@ -185,10 +222,13 @@ exact version `0.1.0-experimental.1`, `@huggingface/transformers` for the embedd
   returned link. Same hint in the `wren` `serverInstructions`.
 - `wren/project/knowledge/rules/retail.md`: chart policy mentions saving to the gallery.
 - `setup.sh`: wait for gallery health; print the gallery URL.
+- `librechat` service env: `CUSTOM_FOOTER` with a link to the gallery. Confirmed in
+  `librechat/librechat:v0.8.8`: `api/server/routes/config.js` passes `CUSTOM_FOOTER` to the
+  client. Whether the footer renders it as a clickable Markdown link is checked during
+  implementation; if not, it shows the plain URL.
 - README: gallery section, updated architecture diagram and repo layout, privacy note (chart
-  text is ranked in the browser; only model weights are downloaded from Hugging Face), and a
-  gallery link in LibreChat's footer via `CUSTOM_FOOTER` if that env var is confirmed to work
-  in `librechat/librechat:v0.8.8`.
+  text is ranked in the browser; model weights are served by the gallery itself), and the
+  volume-wipe note for schema changes.
 
 ## 6. Testing
 
@@ -199,11 +239,13 @@ TDD, 80%+ coverage for new code.
   fallback; upsert keeps `id`/`created_at` and refreshes the rest; Pydantic limits (lengths,
   y count, pie rule, 200 rows); missing/wrong token → 401; list omits `rows`/`sql`; unknown
   id → 404; startup refuses a short token.
-- **`save_chart` (pytest)** — Wren execution and gallery HTTP mocked: unknown field,
-  non-numeric y, SQL error, gallery down/401 → clear tool message; happy path posts the
-  expected payload and returns the public URL.
+- **`save_chart` (pytest)** — Wren execution and gallery HTTP mocked: unsupported chart type,
+  unknown field, non-numeric y (string, `bool`), `None` y allowed, truncated result, SQL
+  error, gallery down/401 → clear tool message; happy path posts the expected payload and
+  returns the public URL.
 - **SPA (vitest + Testing Library)** — scorer (weighting, self excluded, table-only fallback
-  order), list filter, detail renders line/bar/pie from a spec, not-found view.
+  order), worker failure keeps the fallback list and clears "refining…", list filter, detail
+  renders line/bar/pie from a spec, not-found view.
 - **E2E (Playwright)** — against the compose stack: seed charts through
   `POST /internal/charts`, open the list, click a card, detail shows the chart and a related
   list.
@@ -218,5 +260,5 @@ TDD, 80%+ coverage for new code.
   hook/module so it can be swapped.
 - **Wren internal API.** `save_chart` depends on wrenai internals the same way `serve_mcp.py`
   already does; pinned `wrenai==0.15.0`.
-- **First detail-page load is slow** (model download). Table-overlap fallback keeps the page
-  useful meanwhile.
+- **First detail-page load is slow** (model fetched from the gallery once). Table-overlap
+  fallback keeps the page useful meanwhile.
