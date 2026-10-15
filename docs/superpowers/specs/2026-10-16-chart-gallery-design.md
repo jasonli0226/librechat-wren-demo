@@ -220,8 +220,9 @@ exact version `0.1.0-experimental.1`, `@huggingface/transformers` for the embedd
 ## 5. Config and docs changes
 
 - `docker-compose.yml`: new `chart-gallery` service (`127.0.0.1:3090:3090`, volume
-  `gallery_data`, healthcheck on `/healthz`, `restart: unless-stopped`); `wren-mcp` gets
-  `CHART_GALLERY_URL`, `CHART_GALLERY_TOKEN`, `CHART_GALLERY_PUBLIC_URL`.
+  `gallery_data`, healthcheck on `/healthz`, `restart: unless-stopped`, env
+  `CHART_GALLERY_TOKEN`, `GALLERY_PUBLIC_URL`); `wren-mcp` gets
+  `CHART_GALLERY_URL` and `CHART_GALLERY_TOKEN`.
 - `scripts/gen-env.sh`, `.env.example`: generate `CHART_GALLERY_TOKEN`.
 - `librechat/librechat.yaml`: analyst prompt rule 8 — after creating a chart, call
   `save_chart` with a concise title and a one-to-two sentence description, then include the
