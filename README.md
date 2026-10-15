@@ -6,6 +6,7 @@ A self-contained, one-command demo template for an enterprise **"ChatGPT for you
 - **Web search** — built-in search tool over a self-hosted SearXNG instance
 - **Data analysis** — governed text-to-SQL over a mock 13-table retail warehouse via Wren AI's MCP server
 - **Charts** — model-generated chart artifacts (recharts / HTML+Chart.js / Mermaid), opened in LibreChat's side panel
+- **Chart gallery** — every chart the analyst draws is saved (http://localhost:3090) with its title, description and SQL; each chart page suggests related charts, ranked on-device by meaning
 
 ![Retail Analyst answering "What's our gross margin by product category?" — get_instructions, describe_schema, dry_run and run_sql tool calls, then a margin table](docs/screencap.png)
 
@@ -68,6 +69,7 @@ This is the same architectural bet Genie makes, but the definitions live in **yo
 - Row limits + dry-run validation are built into Wren's execution path; `run_sql` defaults to 200 rows (`MCP_ROW_LIMIT`, down from wrenai's 1000)
 - SearXNG is self-hosted (no search API keys), but it still forwards queries to public engines
 - All published ports bind to `127.0.0.1` only
+- The chart gallery write endpoint requires a bearer token (constant-time compare); its port binds to 127.0.0.1 only
 - ⚠️ The Wren MCP HTTP port (7080) has **no auth** in this Wren version. It keeps the MCP SDK's DNS-rebinding protection, extended to the `wren-mcp` hostname via `MCP_ALLOWED_HOSTS` (see `wren/scripts/serve_mcp.py`). Remove the `ports:` mapping in production
 
 ---
@@ -83,8 +85,8 @@ This is the same architectural bet Genie makes, but the definitions live in **yo
                   OpenRouter models   web search     MCP tools
                            │             │              │
                            ▼             ▼              ▼
-                  api.openrouter.ai   SearXNG :8888   Wren MCP :7080
-                       (LLMs)         (meta search)   (streamable HTTP)
+                  api.openrouter.ai   SearXNG :8888   Wren MCP :7080 ──save_chart──▶ chart-gallery :3090
+                       (LLMs)         (meta search)   (streamable HTTP)              (FastAPI + SQLite + SPA)
                                                           │
                                                           ▼
                                               governed SQL (dry-run → run)
@@ -104,13 +106,14 @@ This is the same architectural bet Genie makes, but the definitions live in **yo
 2. The agent (told by LibreChat's `serverInstructions`) calls `get_instructions` for the business rules in `wren/project/knowledge/rules/`, then inspects the MDL with `describe_schema` / `recall_queries`
 3. It drafts SQL, validates with `dry_run`, executes with `run_sql` (read-only, row-capped)
 4. It summarizes the result and emits a **chart artifact** — it appears as a card in the reply; click it to open the interactive, exportable chart in the side panel
-5. Optionally it runs a parallel **web search** for market context and weaves both into the answer
+5. It calls `save_chart`: Wren runs the SQL again (read-only, 200 rows max) and the result is stored in the chart gallery, deduplicated by normalized SQL + chart type. The reply links the gallery page.
+6. Optionally it runs a parallel **web search** for market context and weaves both into the answer
 
 ### Repository layout
 
 ```
 librechat-wren-demo/
-├── docker-compose.yml          # 5 services, one command to boot
+├── docker-compose.yml          # 6 services, one command to boot
 ├── .env.example                # secrets template → copy to .env (git-ignored)
 ├── setup.sh                    # one-command setup: .env, build, start, verify
 ├── docs/
@@ -130,14 +133,27 @@ librechat-wren-demo/
 │   ├── connection.yml          # read-only Postgres profile (${VAR} secrets)
 │   ├── scripts/gen_mdl.py      # introspects live schema → generates MDL
 │   ├── scripts/serve_mcp.py    # `wren serve mcp` with Docker-hostname Host checks
+│   ├── scripts/chart_tool.py   # save_chart tool (re-runs SQL, posts to the gallery)
 │   └── project/
 │       ├── wren_project.yml    # Wren project manifest
 │       └── knowledge/rules/    # business rules served by the get_instructions tool
+├── chart-gallery/              # saved charts: FastAPI + SQLite API, React SPA, bundled embedding model
+│   ├── api/gallery/            # normalize.py (dedup), repository.py, app.py
+│   └── web/src/semantic/       # related-chart ranking with semantic-state (Web Worker)
 ├── librechat/
 │   └── librechat.yaml          # endpoints, Retail Analyst model specs, web search, mcpServers
 └── searxng/
     └── settings.yml            # JSON format enabled for LibreChat
 ```
+
+### Chart gallery
+
+- **Capture** — `save_chart` is an extra tool on the Wren MCP server. The model sends the title, description, chart type, SQL and field names; Wren re-runs the SQL, so the gallery never stores numbers the model typed.
+- **Dedup** — the gallery normalizes SQL with sqlglot (whitespace, casing, comments) and keys charts by `sha256(normalized SQL + chart type)`. Re-asking a question refreshes the existing chart. Different aliases or a different `LIMIT` count as a new chart.
+- **Related charts** — ranked in a Web Worker with [semantic-state](https://github.com/jasonli0226/semantic-state): title + description embeddings (`Xenova/all-MiniLM-L6-v2`) plus a small boost for charts that query the same tables. While the model loads, the page ranks by shared tables only. The model is baked into the gallery image and served from it; chart text never leaves the browser and no CDN is contacted.
+- **Security** — writes need `CHART_GALLERY_TOKEN` (generated into `.env`); the read API and page are open but bound to `127.0.0.1`.
+- **Schema changes** — there are no migrations. After a breaking change to the `charts` table, wipe the volume: `docker compose down && docker volume rm librechat-wren-demo_gallery_data`.
+- **Tests** — `cd chart-gallery/api && uv run pytest`, `cd chart-gallery/web && npm test`, `uv run --no-project --with pytest --with httpx --with "mcp<2" pytest wren/tests`, E2E: `npm run e2e` in `chart-gallery/web` against a running stack (needs `CHART_GALLERY_TOKEN` from `.env`).
 
 ### Key design decisions
 

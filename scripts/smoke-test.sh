@@ -2,6 +2,9 @@
 # End-to-end smoke test for a running stack: SearXNG, Wren MCP, LibreChat.
 # Usage: docker compose up -d --build && ./scripts/smoke-test.sh
 set -uo pipefail
+cd "$(dirname "$0")/.."
+# shellcheck source=lib/env.sh
+. scripts/lib/env.sh
 fail=0
 pass() { echo "PASS  $1"; }
 flunk() { echo "FAIL  $1"; fail=1; }
@@ -53,5 +56,33 @@ if curl -sf http://localhost:3080/health >/dev/null; then
 else
   flunk "LibreChat health"
 fi
+
+# 6. Chart gallery: health, read API, write auth (without adding a chart)
+gallery=${GALLERY_URL:-http://localhost:3090}
+token=$(env_get CHART_GALLERY_TOKEN)
+if curl -sf "$gallery/healthz" | grep -q '"success":true'; then pass "Gallery health"; else flunk "Gallery health"; fi
+if curl -sf "$gallery/api/charts" | grep -q '"success":true'; then pass "Gallery list API"; else flunk "Gallery list API"; fi
+code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$gallery/internal/charts" -H 'content-type: application/json' -d '{}')
+if [ "$code" = 401 ]; then pass "Gallery rejects writes without token"; else flunk "Gallery write without token (got $code)"; fi
+code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$gallery/internal/charts" \
+  -H 'content-type: application/json' -H "Authorization: Bearer $token" -d '{}')
+if [ "$code" = 422 ]; then pass "Gallery accepts the token"; else flunk "Gallery token check (got $code)"; fi
+
+# 7. save_chart is registered on the Wren MCP server
+mcp() {  # $1 = JSON-RPC body, $2 = session id (optional); prints the response
+  curl -s -D "$hdrs" http://localhost:7080/mcp -X POST \
+    -H 'content-type: application/json' -H 'accept: application/json, text/event-stream' \
+    -H 'mcp-protocol-version: 2025-03-26' ${2:+-H "mcp-session-id: $2"} -d "$1"
+}
+hdrs=$(mktemp)
+mcp "$init" >/dev/null
+sid=$(grep -i '^mcp-session-id:' "$hdrs" | tr -d '\r' | awk '{print $2}')
+mcp '{"jsonrpc":"2.0","method":"notifications/initialized"}' "$sid" >/dev/null
+if mcp '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' "$sid" | grep -q '"save_chart"'; then
+  pass "Wren MCP exposes save_chart"
+else
+  flunk "Wren MCP exposes save_chart"
+fi
+rm -f "$hdrs"
 
 exit $fail

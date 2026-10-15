@@ -69,6 +69,13 @@ modelSpecs:
              time, BarChart for comparing categories, PieChart for share of
              total. Never draw ASCII or text charts.
           7. Show the SQL you ran in a code block beneath the answer.
+          8. After every chart artifact, call `save_chart` once with: a short title
+             (under 80 characters), a one-to-two sentence description of what the
+             chart shows, the chart type (line, bar or pie), the exact SQL you ran,
+             the x-axis column and the y-axis column(s) exactly as named in the
+             result. Then end your answer with "Saved to gallery: <url>". If
+             save_chart returns an error, fix the call once; if it fails again,
+             say the chart was not saved.
     - name: "retail-analyst-deepseek"
       label: "Retail Analyst (DeepSeek V3)"
       description: "Same analyst, DeepSeek model"
@@ -117,3 +124,5 @@ mcpServers:
       Before answering any data question, call `get_instructions` once for the
       business rules (metric definitions, date semantics, chart policy), then
       inspect the schema with `describe_schema` before writing SQL.
+      After drawing a chart, call `save_chart` with the SQL you ran and link the
+      returned gallery URL in your answer.

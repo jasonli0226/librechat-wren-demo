@@ -114,6 +114,7 @@ services:
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
       SEARXNG_INSTANCE_URL: http://searxng:8080
       SCHEDULES_SINGLE_PROCESS: "true"   # demo runs exactly one LibreChat replica
+      CUSTOM_FOOTER: "[Chart gallery](http://localhost:3090)"
     volumes:
       - ./librechat/librechat.yaml:/app/librechat.yaml:ro
       - librechat_uploads:/app/client/public/images
