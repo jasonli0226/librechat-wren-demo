@@ -103,9 +103,9 @@ per `y_fields` entry (1–5). Pie: `x_field` is the slice label, `y_fields[0]` t
     coercion: `money` or formatted text (`'$1,234.56'`) is rejected with a hint to cast to
     `numeric` in SQL. `None` is allowed (gap in the series).
   - `truncated` must be false; otherwise the message asks to aggregate further.
-- Env: `CHART_GALLERY_URL` (internal, e.g. `http://chart-gallery:3090`),
-  `CHART_GALLERY_TOKEN`, `CHART_GALLERY_PUBLIC_URL` (e.g. `http://localhost:3090`, used to
-  build the link returned to the model).
+- Env: `CHART_GALLERY_URL` (internal, e.g. `http://chart-gallery:3090`) and
+  `CHART_GALLERY_TOKEN`. The public link comes back from the gallery, which builds it from
+  its own `GALLERY_PUBLIC_URL` (e.g. `http://localhost:3090`).
 - Errors returned as a clear tool message, never an exception that breaks the chat: SQL error,
   any validation failure above, wrong y count for pie, gallery unreachable or rejecting the
   request.
@@ -198,15 +198,21 @@ exact version `0.1.0-experimental.1`, `@huggingface/transformers` for the embedd
   image, and the gallery serves them under `/models/`. The worker sets transformers.js
   `env.allowRemoteModels = false` and `env.localModelPath = "/models/"`, so the browser never
   contacts Hugging Face. Only the image build needs internet, as it already does for pip/npm.
-- `score = cosine(embedding) + TABLE_BOOST × jaccard(tables)`, with `TABLE_BOOST = 0.15`
-  defined in one module so it can be tuned. The current chart is excluded.
-- Implemented with semantic-state's `useSimilar` (or nearest equivalent; exact API confirmed
-  while planning) plus a custom scorer for the boost. The scorer is a pure function, tested
-  on its own.
+- Implemented with semantic-state's `useSimilar(id, k)`. Its worker scores neighbours as a
+  weighted average of per-feature cosines (custom scorers do not apply to `useSimilar`), so
+  the table boost is a second feature: `tables` = a unit-length one-hot vector over all table
+  names. Weights `{ text: 1, tables: TABLE_WEIGHT }` with `TABLE_WEIGHT = 0.15` in one module.
+  Effective score: `(cos_text + 0.15 × cos_tables) / 1.15`, where `cos_tables` is the Ochiai
+  overlap of the two table sets (same ordering effect as the Jaccard boost first proposed).
+  The current chart is excluded by `useSimilar`.
+- `useSimilar` only re-requests on id/status/weights changes, so the app's
+  `useRelatedCharts` hook calls `store.requestSimilar` again once embedding finishes.
 - Before the model is ready (first load fetches ~23 MB from the gallery, then browser-cached):
-  related list ranked by table overlap only, labelled "refining…", replaced when embeddings
-  are ready.
-- If the model fails to load, the worker posts one error message and stops. There is no retry.
+  items have only the `tables` feature, so the same `useSimilar` call ranks by table overlap.
+  The list is labelled "refining…" and re-requested when embeddings are ready.
+- If the model fails to load, the worker posts one error message and stops. There is no retry:
+  the embedder is wrapped so that after the first load failure every later call fails at
+  once (semantic-state's transformers embedder would otherwise retry on the next batch).
   The table-overlap list stays (the "refining…" label is removed) and no error wall is shown.
   Model loading and embedding run only in the worker, so a failure never blocks the main
   thread.
@@ -249,8 +255,9 @@ TDD, 80%+ coverage for new code.
 - **E2E (Playwright)** — against the compose stack: seed charts through
   `POST /internal/charts`, open the list, click a card, detail shows the chart and a related
   list.
-- **`scripts/smoke-test.sh`** — gallery healthy; POST with token succeeds; POST without token
-  → 401; `GET /api/charts` contains the seeded chart.
+- **`scripts/smoke-test.sh`** — gallery healthy; `GET /api/charts` succeeds; POST without
+  token → 401; POST with token and an empty body → 422 (proves the token is accepted without
+  adding a chart to the demo gallery); Wren MCP `tools/list` includes `save_chart`.
 
 ## 7. Risks
 
