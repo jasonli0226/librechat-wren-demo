@@ -8,7 +8,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-PORTS=(3080 7080 8888)
+PORTS=(3080 3090 7080 8888)
 BOOT_TIMEOUT=900   # seconds; first boot pulls images and builds the Wren MDL
 data_orders=0
 
@@ -112,7 +112,8 @@ Ready: open http://localhost:3080
   1. Sign up (the first account becomes admin)
   2. Start a new chat with "Retail Analyst (GLM-4.6)"
   3. Try: "How do monthly sales revenue trends look over the past 12 months? Chart it."
+  4. Saved charts and related-chart suggestions: http://localhost:3090
 
 Stop:   docker compose down        (keeps data)
-Reset:  docker compose down -v     (deletes all data and accounts)
+Reset:  docker compose down -v     (deletes all data, accounts and saved charts)
 EOF

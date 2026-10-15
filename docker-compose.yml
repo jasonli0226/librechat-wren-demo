@@ -37,6 +37,9 @@ services:
       MCP_ALLOWED_HOSTS: wren-mcp:*,localhost:*,127.0.0.1:*
       # Default run_sql row cap (wrenai's built-in default is 1000)
       MCP_ROW_LIMIT: "200"
+      # save_chart posts re-run results here (internal network only)
+      CHART_GALLERY_URL: http://chart-gallery:3090
+      CHART_GALLERY_TOKEN: ${CHART_GALLERY_TOKEN:?run scripts/gen-env.sh}
     volumes:
       - wren_home:/wren/home
     ports:
@@ -48,6 +51,24 @@ services:
       timeout: 5s
       retries: 30
       start_period: 60s
+    restart: unless-stopped
+
+  # ---------- Chart gallery (saved charts + related-chart suggestions) ----------
+  chart-gallery:
+    build: ./chart-gallery
+    container_name: chart-gallery
+    environment:
+      CHART_GALLERY_TOKEN: ${CHART_GALLERY_TOKEN:?run scripts/gen-env.sh}
+      GALLERY_PUBLIC_URL: http://localhost:3090
+    volumes:
+      - gallery_data:/data
+    ports:
+      - "127.0.0.1:3090:3090"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:3090/healthz', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
     restart: unless-stopped
 
   # ---------- Web search ----------
@@ -105,3 +126,4 @@ volumes:
   mongo_data:
   wren_home:
   librechat_uploads:
+  gallery_data:

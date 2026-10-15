@@ -13,7 +13,8 @@ rand_hex() {  # $1 = number of random bytes
 
 # key:bytes. LibreChat needs CREDS_KEY = 32 bytes and CREDS_IV = 16 bytes (AES-256-CBC).
 for spec in RETAIL_DB_PASSWORD:24 WREN_RO_PASSWORD:24 SEARXNG_SECRET:32 \
-            CREDS_KEY:32 CREDS_IV:16 JWT_SECRET:32 JWT_REFRESH_SECRET:32; do
+            CREDS_KEY:32 CREDS_IV:16 JWT_SECRET:32 JWT_REFRESH_SECRET:32 \
+            CHART_GALLERY_TOKEN:32; do
   key=${spec%%:*}; bytes=${spec##*:}
   val=$(env_get "$key")
   if [ -z "$val" ]; then
