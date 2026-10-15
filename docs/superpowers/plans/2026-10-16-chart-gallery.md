@@ -4,16 +4,16 @@
 
 **Goal:** Every chart the Retail Analyst draws is saved (title, description, spec, rows re-run through Wren) to a new gallery app that lists charts and suggests related ones by meaning.
 
-**Architecture:** A new `save_chart` tool registered inside the existing `wren-mcp` server re-runs the chart SQL through Wren's own `run_sql` path and POSTs the result to a new `chart-gallery` container (FastAPI + SQLite + a React SPA). The SPA renders charts from a declarative spec with recharts and ranks related charts in a Web Worker with `semantic-state` (`useSimilar`), using a title+description embedding plus a one-hot "tables" feature; the embedding model is served by the gallery itself.
+**Architecture:** A new `save_chart` tool registered inside the existing `wren-mcp` server re-runs the chart SQL through Wren's own `run_sql` path and POSTs the result to a new `chart-gallery` container (FastAPI + SQLite + a React SPA). The SPA renders charts from a declarative spec with recharts and ranks related charts in a Web Worker with `semantic-state` (`useSimilar`), using a title+description embedding plus a one-hot "tables" feature; while the worker's answer is pending (model loading), the main thread shows a table-overlap ranking. The embedding model is served by the gallery itself.
 
-**Tech Stack:** Python 3.11, FastAPI, Uvicorn, SQLite, sqlglot 30.23.0, httpx, pytest · Vite, React 19, TypeScript, react-router 7, recharts, semantic-state 0.1.0-experimental.1, @huggingface/transformers, vitest, Testing Library, Playwright · Docker Compose.
+**Tech Stack:** Python 3.11, FastAPI, Uvicorn, SQLite, sqlglot 30.23.0, httpx, pytest · Vite, React 19, TypeScript, react-router 8, recharts 3, semantic-state 0.1.0-experimental.1, @huggingface/transformers 4.3.1, vitest, Testing Library, Playwright · Docker Compose.
 
 **Spec:** `docs/superpowers/specs/2026-10-16-chart-gallery-design.md`
 
 ## Global Constraints
 
 - Branch: `feat/chart-gallery`. Commit messages: conventional (`feat:`, `test:`, `docs:`, `chore:`), **no** `Co-Authored-By` or any Claude attribution trailer.
-- `semantic-state` pinned to the exact version `0.1.0-experimental.1` (`npm install --save-exact`).
+- `semantic-state` pinned to the exact version `0.1.0-experimental.1` and `@huggingface/transformers` to the exact version `4.3.1` (`npm install --save-exact`). Code against the **published** package (`node_modules/semantic-state/dist/*.d.ts`), not the GitHub `main` branch: in 0.1.0-experimental.1 `SemanticSnapshot` has no `embedding` field, and the worker handles messages strictly in order (a `similar` request queued behind an `upsert` is answered only after that upsert's embedding finished or failed).
 - `sqlglot==30.23.0`; `wrenai==0.15.0` stays as is in `wren/Dockerfile`.
 - Chart types: `line | bar | pie` only. `y_fields`: 1–5 unique names; pie: exactly 1. Rows: 1–200. Title: 1–120 chars. Description: 1–500 chars.
 - `save_chart` re-runs SQL with a 200-row cap; a truncated result is rejected.
@@ -90,11 +90,11 @@ chart-gallery/
         │   └── NotFound.tsx
         ├── semantic/
         │   ├── model.json          # embedding model id + files (shared with fetch-model.mjs)
-        │   ├── features.ts         # constants, chartText, tableFeatures, sharedTables
+        │   ├── features.ts         # constants, chartText, tableFeatures, sharedTables, rankByTables
         │   ├── failOnce.ts
         │   ├── charts.worker.ts
         │   ├── store.ts
-        │   ├── useRelatedCharts.ts # isRefining, useRelatedCharts
+        │   ├── useRelatedCharts.ts # useSimilar + table-overlap fallback
         │   └── RelatedCharts.tsx   # RelatedCharts, relatedReason
         └── test/
             ├── setup.ts
@@ -1460,8 +1460,8 @@ npm pkg delete main scripts.test keywords author license description version
 npm pkg set scripts.dev="vite" scripts.build="tsc --noEmit && vite build" scripts.typecheck="tsc --noEmit" \
   scripts.test="vitest run" scripts.coverage="vitest run --coverage" \
   scripts.fetch-model="node scripts/fetch-model.mjs public" scripts.e2e="playwright test"
-npm install react react-dom react-router recharts @huggingface/transformers
-npm install --save-exact semantic-state@0.1.0-experimental.1
+npm install react react-dom react-router recharts
+npm install --save-exact semantic-state@0.1.0-experimental.1 @huggingface/transformers@4.3.1
 npm install -D vite @vitejs/plugin-react typescript @types/react @types/react-dom @types/node \
   vitest @vitest/coverage-v8 jsdom @testing-library/react @testing-library/jest-dom @testing-library/user-event \
   @playwright/test
@@ -1674,7 +1674,6 @@ export function createFakeStore(initial: Partial<SemanticSnapshot<ChartSummary>>
     status: 'ready',
     error: null,
     model: { status: 'ready', progress: 1, error: null },
-    embedding: null,
     results: {},
     similar: {},
     weights: { text: 1, tables: 0.15 },
@@ -2140,10 +2139,10 @@ git commit -m "feat: scaffold chart gallery web app with chart rendering"
 **Interfaces:**
 - Consumes: `ChartSummary` (Task 5); `createFakeStore`, `SUMMARIES` (Task 5); semantic-state APIs — `createSemanticStore`, `SemanticStore`, `SemanticSnapshot`, `ModelState`, `ResultRow`, `FeatureVectors`, `Id`, `similarKey` from `semantic-state`; `SemanticProvider`, `useSemanticStore`, `useSemanticSnapshot`, `useSimilar(id, k)` from `semantic-state/react`; `defineSemanticWorker`, `Embedder` from `semantic-state/worker`; `transformersEmbedder({ model })` from `semantic-state/transformers`.
 - Produces:
-  - `features.ts`: `TABLE_WEIGHT = 0.15`, `RELATED_COUNT = 5`, `EMBED_MODEL: string` (from `model.json`), `chartText(c)`, `tableFeatures(items): ReadonlyMap<Id, FeatureVectors>`, `sharedTables(a, b): string[]`.
+  - `features.ts`: `TABLE_WEIGHT = 0.15`, `RELATED_COUNT = 5`, `EMBED_MODEL: string` (from `model.json`), `chartText(c)`, `tableFeatures(items): ReadonlyMap<Id, FeatureVectors>`, `sharedTables(a, b): string[]`, `rankByTables(current, charts, k): ResultRow<ChartSummary>[]`.
   - `failOnce(inner: Embedder): Embedder`.
   - `store.ts`: `chartStore: SemanticStore<ChartSummary>`.
-  - `useRelatedCharts.ts`: `isRefining(snapshot): boolean`, `useRelatedCharts(id, k = RELATED_COUNT) -> { rows: readonly ResultRow<ChartSummary>[] | null; refining: boolean; modelStatus: ModelState['status'] }`.
+  - `useRelatedCharts.ts`: `useRelatedCharts(current: ChartSummary, charts: readonly ChartSummary[], k = RELATED_COUNT) -> { rows: readonly ResultRow<ChartSummary>[]; refining: boolean; modelStatus: ModelState['status'] }` — `rows` is the worker's answer once it arrives, else the table-overlap fallback (`refining: true`).
   - `RelatedCharts.tsx`: `relatedReason(current, other, topicReady): string`, `<RelatedCharts current rows refining modelStatus />` rendering `<section aria-labelledby="related-heading" data-model-status=…>`.
   - `model.json` shape `{ "id": string, "files": string[] }`, also read by `scripts/fetch-model.mjs` (Task 8).
 
@@ -2155,7 +2154,7 @@ git commit -m "feat: scaffold chart gallery web app with chart rendering"
 import { describe, expect, it } from 'vitest'
 import { SUMMARIES } from '../test/fixtures'
 import type { ChartSummary } from '../types'
-import { chartText, sharedTables, tableFeatures } from './features'
+import { chartText, rankByTables, sharedTables, tableFeatures } from './features'
 
 const dot = (a: Float32Array, b: Float32Array) => a.reduce((sum, v, i) => sum + v * b[i], 0)
 
@@ -2183,6 +2182,26 @@ describe('features', () => {
   it('lists shared tables in the other chart order', () => {
     expect(sharedTables(SUMMARIES[0], SUMMARIES[1])).toEqual(['stores'])
     expect(sharedTables(SUMMARIES[0], SUMMARIES[2])).toEqual([])
+  })
+})
+
+describe('rankByTables', () => {
+  const extra: ChartSummary = { ...SUMMARIES[0], id: 4, title: 'Orders by store', tables: ['orders', 'stores'] }
+
+  it('ranks by table overlap, excludes the current chart and zero overlap', () => {
+    const rows = rankByTables(SUMMARIES[0], [...SUMMARIES, extra], 5)
+    expect(rows.map((r) => r.id)).toEqual([4, 2]) // same tables (1.0), then shares "stores" (0.5)
+    expect(rows[0].score).toBeCloseTo(1)
+    expect(rows[1].score).toBeCloseTo(0.5)
+    expect(rows[0].reason).toEqual({ kind: 'fallback', becauseOf: null })
+  })
+
+  it('caps the result at k', () => {
+    expect(rankByTables(SUMMARIES[0], [...SUMMARIES, extra], 1)).toHaveLength(1)
+  })
+
+  it('returns nothing for a chart without tables', () => {
+    expect(rankByTables({ ...SUMMARIES[0], tables: [] }, SUMMARIES, 5)).toEqual([])
   })
 })
 ```
@@ -2215,39 +2234,29 @@ describe('failOnce', () => {
 ```tsx
 import { act, renderHook } from '@testing-library/react'
 import type { ReactNode } from 'react'
+import { similarKey } from 'semantic-state'
 import { SemanticProvider } from 'semantic-state/react'
 import { describe, expect, it } from 'vitest'
 import { createFakeStore } from '../test/fakeStore'
-import { isRefining, useRelatedCharts } from './useRelatedCharts'
-
-const model = (status: 'idle' | 'loading' | 'ready' | 'error') => ({ status, progress: 0, error: null })
-
-describe('isRefining', () => {
-  it.each([
-    ['idle', null, true],
-    ['loading', null, true],
-    ['ready', { done: 1, total: 3 }, true],
-    ['ready', null, false],
-    ['error', null, false],
-  ] as const)('model %s, embedding %o → %s', (status, embedding, expected) => {
-    expect(isRefining({ model: model(status), embedding })).toBe(expected)
-  })
-})
+import { SUMMARIES } from '../test/fixtures'
+import { useRelatedCharts } from './useRelatedCharts'
 
 describe('useRelatedCharts', () => {
-  it('asks again for neighbours once embeddings are ready', () => {
-    const { store, update } = createFakeStore({ model: model('loading'), embedding: { done: 0, total: 3 } })
+  it('shows the table-overlap fallback until the worker answers', () => {
+    const { store, update } = createFakeStore({ model: { status: 'loading', progress: 0.3, error: null } })
     const wrapper = ({ children }: { children: ReactNode }) => <SemanticProvider store={store}>{children}</SemanticProvider>
-    const { result } = renderHook(() => useRelatedCharts(2), { wrapper })
-    expect(result.current.refining).toBe(true)
-    const callsWhileRefining = store.requestSimilar.mock.calls.length
+    const { result } = renderHook(() => useRelatedCharts(SUMMARIES[1], SUMMARIES), { wrapper })
 
-    act(() => update({ model: model('ready'), embedding: null }))
+    expect(store.requestSimilar).toHaveBeenCalledWith(2, 5)
+    expect(result.current.refining).toBe(true)
+    expect(result.current.rows.map((r) => r.id)).toEqual([1]) // shares "stores"
+
+    const answer = { id: 3, item: SUMMARIES[2], score: 0.4, confidence: 0.4, reason: { kind: 'interest' as const, becauseOf: 2 } }
+    act(() => update({ model: { status: 'ready', progress: 1, error: null }, similar: { [similarKey(2, 5)]: [answer] } }))
 
     expect(result.current.refining).toBe(false)
     expect(result.current.modelStatus).toBe('ready')
-    expect(store.requestSimilar.mock.calls.length).toBe(callsWhileRefining + 1)
-    expect(store.requestSimilar).toHaveBeenLastCalledWith(2, 5)
+    expect(result.current.rows).toEqual([answer])
   })
 })
 ```
@@ -2334,7 +2343,7 @@ Expected: FAIL — cannot resolve `./features`, `./failOnce`, `./useRelatedChart
 `src/semantic/features.ts`:
 
 ```ts
-import type { FeatureVectors, Id } from 'semantic-state'
+import type { FeatureVectors, Id, ResultRow } from 'semantic-state'
 import type { ChartSummary } from '../types'
 import model from './model.json'
 
@@ -2363,6 +2372,20 @@ export function tableFeatures(items: readonly ChartSummary[]): ReadonlyMap<Id, F
 export function sharedTables(current: ChartSummary, other: ChartSummary): string[] {
   const mine = new Set(current.tables)
   return other.tables.filter((table) => mine.has(table))
+}
+
+/** Main-thread stand-in while the worker is still embedding: table overlap (cosine of the one-hot vectors). */
+export function rankByTables(current: ChartSummary, charts: readonly ChartSummary[], k: number): ResultRow<ChartSummary>[] {
+  if (current.tables.length === 0) return []
+  return charts
+    .filter((chart) => chart.id !== current.id && chart.tables.length > 0)
+    .map((chart) => {
+      const score = sharedTables(current, chart).length / Math.sqrt(current.tables.length * chart.tables.length)
+      return { id: chart.id, item: chart, score, confidence: score, reason: { kind: 'fallback' as const, becauseOf: null } }
+    })
+    .filter((row) => row.score > 0)
+    .sort((a, b) => b.score - a.score || a.item.id - b.item.id)
+    .slice(0, k)
 }
 ```
 
@@ -2436,38 +2459,36 @@ export const chartStore = createSemanticStore<ChartSummary>(
 `src/semantic/useRelatedCharts.ts`:
 
 ```ts
-import { useEffect } from 'react'
-import type { ModelState, ResultRow, SemanticSnapshot } from 'semantic-state'
-import { useSemanticSnapshot, useSemanticStore, useSimilar } from 'semantic-state/react'
+import { useMemo } from 'react'
+import type { ModelState, ResultRow } from 'semantic-state'
+import { useSemanticSnapshot, useSimilar } from 'semantic-state/react'
 import type { ChartSummary } from '../types'
-import { RELATED_COUNT } from './features'
-
-/** True while the ranking may still change: model loading or items still being embedded. */
-export function isRefining(snapshot: Pick<SemanticSnapshot<unknown>, 'model' | 'embedding'>): boolean {
-  if (snapshot.model.status === 'error') return false
-  return snapshot.model.status !== 'ready' || snapshot.embedding !== null
-}
+import { RELATED_COUNT, rankByTables } from './features'
 
 export interface RelatedState {
-  readonly rows: readonly ResultRow<ChartSummary>[] | null
+  readonly rows: readonly ResultRow<ChartSummary>[]
   readonly refining: boolean
   readonly modelStatus: ModelState['status']
 }
 
 /**
- * Neighbours of one chart. Until embeddings exist, items carry only the `tables` feature, so the
- * same request ranks by table overlap. useSimilar does not re-request when embedding finishes, so ask again.
+ * Neighbours of one chart. The worker handles messages in order, so the `similar` request waits
+ * behind the list's upsert and is answered once embedding finished (text + tables) or failed
+ * (tables only). Until then, show a table-overlap ranking computed here.
  */
-export function useRelatedCharts(id: number, k = RELATED_COUNT): RelatedState {
-  const store = useSemanticStore<ChartSummary>()
+export function useRelatedCharts(
+  current: ChartSummary,
+  charts: readonly ChartSummary[],
+  k = RELATED_COUNT,
+): RelatedState {
   const snapshot = useSemanticSnapshot<ChartSummary>()
-  const rows = useSimilar<ChartSummary>(id, k)
-  const refining = isRefining(snapshot)
-  const ready = snapshot.status === 'ready'
-  useEffect(() => {
-    if (ready && !refining) store.requestSimilar(id, k)
-  }, [store, id, k, ready, refining])
-  return { rows, refining, modelStatus: snapshot.model.status }
+  const answered = useSimilar<ChartSummary>(current.id, k)
+  const fallback = useMemo(() => rankByTables(current, charts, k), [current, charts, k])
+  return {
+    rows: answered ?? fallback,
+    refining: answered === null,
+    modelStatus: snapshot.model.status,
+  }
 }
 ```
 
@@ -3017,11 +3038,11 @@ function ChartDetailView({ id }: { readonly id: number }) {
 function RelatedSection({ current }: { readonly current: ChartSummary }) {
   const list = useChartList()
   if (list.status !== 'ready') return null
-  return <RelatedForChart current={current} />
+  return <RelatedForChart current={current} charts={list.data} />
 }
 
-function RelatedForChart({ current }: { readonly current: ChartSummary }) {
-  const { rows, refining, modelStatus } = useRelatedCharts(current.id)
+function RelatedForChart({ current, charts }: { readonly current: ChartSummary; readonly charts: readonly ChartSummary[] }) {
+  const { rows, refining, modelStatus } = useRelatedCharts(current, charts)
   return <RelatedCharts current={current} rows={rows} refining={refining} modelStatus={modelStatus} />
 }
 ```

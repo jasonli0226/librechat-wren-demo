@@ -178,7 +178,8 @@ SQL or the token.
 ### 4.3 Gallery SPA
 
 Stack: Vite, React, TypeScript, `react-router`, `recharts`, `semantic-state` pinned to the
-exact version `0.1.0-experimental.1`, `@huggingface/transformers` for the embedding worker.
+exact version `0.1.0-experimental.1`, `@huggingface/transformers` pinned to `4.3.1` for the
+embedding worker.
 
 - **List `/`** — card grid: title, clamped description, chart-type badge, table chips, relative
   updated time. Client-side substring filter on title + description. Empty state explains how
@@ -205,11 +206,13 @@ exact version `0.1.0-experimental.1`, `@huggingface/transformers` for the embedd
   Effective score: `(cos_text + 0.15 × cos_tables) / 1.15`, where `cos_tables` is the Ochiai
   overlap of the two table sets (same ordering effect as the Jaccard boost first proposed).
   The current chart is excluded by `useSimilar`.
-- `useSimilar` only re-requests on id/status/weights changes, so the app's
-  `useRelatedCharts` hook calls `store.requestSimilar` again once embedding finishes.
+- In the published `0.1.0-experimental.1`, the worker handles messages strictly in order and
+  builds the `tables` feature only after embedding. A `useSimilar` request therefore waits
+  behind the list upsert and is answered once embedding finished (text + tables) or failed
+  (tables only).
 - Before the model is ready (first load fetches ~23 MB from the gallery, then browser-cached):
-  items have only the `tables` feature, so the same `useSimilar` call ranks by table overlap.
-  The list is labelled "refining…" and re-requested when embeddings are ready.
+  the app ranks by table overlap on the main thread (same Ochiai score) and labels the list
+  "refining…"; the worker's answer replaces it when it arrives.
 - If the model fails to load, the worker posts one error message and stops. There is no retry:
   the embedder is wrapped so that after the first load failure every later call fails at
   once (semantic-state's transformers embedder would otherwise retry on the next batch).
