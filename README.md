@@ -118,7 +118,9 @@ librechat-wren-demo/
 ├── setup.sh                    # one-command setup: .env, build, start, verify
 ├── docs/
 │   ├── screencap.png           # README screenshot (Wren SQL)
-│   └── screencap-2.png         # README screenshot (Wren + web search)
+│   ├── screencap-2.png         # README screenshot (Wren + web search)
+│   ├── screencap-3.png         # README screenshot (chart gallery list)
+│   └── screencap-4.png         # README screenshot (chart detail + related charts)
 ├── scripts/
 │   ├── lib/env.sh              # .env read/write helpers
 │   ├── gen-env.sh              # generates every secret in .env
@@ -147,6 +149,14 @@ librechat-wren-demo/
 ```
 
 ### Chart gallery
+
+![Chart gallery list: seven saved charts as cards, each with its chart type, title, description, the warehouse tables it queries and when it was last updated, plus a filter box](docs/screencap-3.png)
+
+*The gallery at http://localhost:3090 after a few analyst questions. Each card shows the chart type, the title and description the analyst wrote, and the warehouse tables its SQL reads. The two "Total Revenue by Store" cards come from two chats where the model wrote different SQL for the same question. Dedup only merges SQL that differs in whitespace, casing or comments.*
+
+![Chart detail: "Total Revenue by Store" bar chart re-rendered from stored rows, with collapsible data table and SQL, and three related charts that each say why they match](docs/screencap-4.png)
+
+*A chart's page: the bar chart is drawn from the rows Wren re-ran, not from numbers the model typed. The data table and SQL fold out underneath. **Related charts** lists the top 3 by meaning of the title and description, with a small boost for shared tables, and each one says why it matched.*
 
 - **Capture** — `save_chart` is an extra tool on the Wren MCP server. The model sends the title, description, chart type, SQL and field names; Wren re-runs the SQL, so the gallery never stores numbers the model typed.
 - **Dedup** — the gallery normalizes SQL with sqlglot (whitespace, casing, comments) and keys charts by `sha256(normalized SQL + chart type)`. Re-asking a question refreshes the existing chart. Different aliases or a different `LIMIT` count as a new chart.
