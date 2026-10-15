@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { SUMMARIES } from '../test/fixtures'
 import type { ChartSummary } from '../types'
-import { chartText, rankByTables, sharedTables, tableFeatures } from './features'
+import { RELATED_COUNT, chartText, rankByTables, sharedTables, tableFeatures } from './features'
 
 const dot = (a: Float32Array, b: Float32Array) => a.reduce((sum, v, i) => sum + v * b[i], 0)
 
@@ -49,5 +49,11 @@ describe('rankByTables', () => {
 
   it('returns nothing for a chart without tables', () => {
     expect(rankByTables({ ...SUMMARIES[0], tables: [] }, SUMMARIES, 5)).toEqual([])
+  })
+})
+
+describe('RELATED_COUNT', () => {
+  it('shows the top 3 related charts', () => {
+    expect(RELATED_COUNT).toBe(3)
   })
 })

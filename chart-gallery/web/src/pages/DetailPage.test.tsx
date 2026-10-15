@@ -25,7 +25,7 @@ describe('DetailPage', () => {
     mockApi({ '/api/charts/2': ok(DETAIL), '/api/charts': ok(SUMMARIES) })
     const { store } = createFakeStore({
       similar: {
-        [similarKey(2, 5)]: [
+        [similarKey(2, 3)]: [
           { id: 1, item: SUMMARIES[0], score: 0.8, confidence: 0.8, reason: { kind: 'interest', becauseOf: 2 } },
         ],
       },

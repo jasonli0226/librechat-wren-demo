@@ -4,7 +4,7 @@ import model from './model.json'
 
 /** Weight of shared warehouse tables relative to the title+description embedding (weight 1). */
 export const TABLE_WEIGHT = 0.15
-export const RELATED_COUNT = 5
+export const RELATED_COUNT = 3
 export const EMBED_MODEL: string = model.id
 
 export const chartText = (chart: ChartSummary) => `${chart.title}. ${chart.description}`
