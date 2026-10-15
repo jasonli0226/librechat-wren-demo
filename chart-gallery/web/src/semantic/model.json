@@ -1,0 +1,4 @@
+{
+  "id": "Xenova/all-MiniLM-L6-v2",
+  "files": ["config.json", "tokenizer.json", "tokenizer_config.json", "onnx/model_quantized.onnx"]
+}
