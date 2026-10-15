@@ -6,6 +6,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 MIN_TOKEN_LENGTH = 32
+# Host headers accepted (DNS-rebinding protection): browser on the host, and wren-mcp in compose.
+DEFAULT_ALLOWED_HOSTS = ("localhost", "127.0.0.1", "chart-gallery")
 
 
 class ConfigError(RuntimeError):
@@ -18,6 +20,7 @@ class Settings:
     db_path: str
     public_url: str
     static_dir: str | None = None
+    allowed_hosts: tuple[str, ...] = DEFAULT_ALLOWED_HOSTS
 
     @classmethod
     def from_env(cls, env: Mapping[str, str]) -> Settings:
@@ -29,4 +32,9 @@ class Settings:
             db_path=env.get("GALLERY_DB_PATH", "charts.db"),
             public_url=env.get("GALLERY_PUBLIC_URL", "http://localhost:3090").rstrip("/"),
             static_dir=env.get("GALLERY_STATIC_DIR") or None,
+            allowed_hosts=_split_hosts(env.get("GALLERY_ALLOWED_HOSTS", "")) or DEFAULT_ALLOWED_HOSTS,
         )
+
+
+def _split_hosts(value: str) -> tuple[str, ...]:
+    return tuple(host.strip() for host in value.split(",") if host.strip())

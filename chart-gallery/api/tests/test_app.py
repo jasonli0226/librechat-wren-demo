@@ -18,7 +18,11 @@ def client(tmp_path):
     (static / "index.html").write_text("<html>spa</html>")
     (static / "ort" / "ort-wasm.wasm").write_bytes(b"\0asm")
     settings = Settings(
-        token=TOKEN, db_path=str(tmp_path / "charts.db"), public_url="http://gallery.test", static_dir=str(static)
+        token=TOKEN,
+        db_path=str(tmp_path / "charts.db"),
+        public_url="http://gallery.test",
+        static_dir=str(static),
+        allowed_hosts=("testserver",),
     )
     return TestClient(create_app(settings))
 
@@ -158,3 +162,9 @@ def test_logs_never_contain_sql_or_token(client, caplog):
     save(client)
     assert "SELECT" not in caplog.text and TOKEN not in caplog.text
     assert "chart 1 created" in caplog.text
+
+
+def test_rejects_unknown_host_header(client):
+    # DNS rebinding: a page on evil.example resolving to 127.0.0.1 must not read charts.
+    response = client.get("/api/charts", headers={"Host": "evil.example"})
+    assert response.status_code == 400

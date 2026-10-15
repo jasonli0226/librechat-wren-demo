@@ -25,3 +25,9 @@ def test_reads_paths():
         {"CHART_GALLERY_TOKEN": "x" * 40, "GALLERY_DB_PATH": "/data/c.db", "GALLERY_STATIC_DIR": "/app/static"}
     )
     assert (settings.db_path, settings.static_dir) == ("/data/c.db", "/app/static")
+
+
+def test_allowed_hosts_default_and_override():
+    assert Settings.from_env({"CHART_GALLERY_TOKEN": "x" * 32}).allowed_hosts == ("localhost", "127.0.0.1", "chart-gallery")
+    settings = Settings.from_env({"CHART_GALLERY_TOKEN": "x" * 32, "GALLERY_ALLOWED_HOSTS": "a.test, b.test"})
+    assert settings.allowed_hosts == ("a.test", "b.test")

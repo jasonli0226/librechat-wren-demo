@@ -11,6 +11,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .config import Settings
@@ -113,6 +114,8 @@ def create_app(settings: Settings, repo: ChartRepository | None = None) -> FastA
         if not repository.ping():
             return _error(503, "database unavailable")
         return envelope({"status": "ok"})
+
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(settings.allowed_hosts))
 
     if settings.static_dir:
         app.mount("/", SpaStaticFiles(directory=settings.static_dir, html=True), name="spa")
