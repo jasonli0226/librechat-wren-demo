@@ -1,4 +1,10 @@
-from gallery.headline import headline_for, headlines_for
+import json
+from pathlib import Path
+from typing import get_args
+
+import pytest
+
+from gallery.headline import TileType, headline_for, headlines_for
 
 
 def chart(pairs, x="k", y="v"):
@@ -91,11 +97,19 @@ def test_scatter_without_axes_falls_back_to_rows():
     assert headline_for(scatter_chart([1, 2], [3, 4]), "scatter") == {"rows": 2}
 
 
-def test_headlines_for_merges_without_conflict():
-    c = chart([("A", 30), ("B", 50), ("C", 20)])
-    merged = headlines_for(c, ["bar", "table"])
-    singles = [headline_for(c, "bar"), headline_for(c, "table")]
-    assert merged.keys() == singles[0].keys() | singles[1].keys()
+ALL_TYPES = get_args(TileType)
+SHAPE_CASES = json.loads((Path(__file__).parents[2] / "fixtures" / "chart-shapes.json").read_text())
+MERGE_CHARTS = [
+    ("numeric", chart([(i, v) for i, v in enumerate([30, 50, 20, 45, 10, 60], start=1)])),
+    *((case["name"], {**case["chart"], "rows": case["rows"]}) for case in SHAPE_CASES),
+]
+
+
+@pytest.mark.parametrize("c", [c for _, c in MERGE_CHARTS], ids=[name for name, _ in MERGE_CHARTS])
+def test_headlines_for_merges_every_type_without_conflict(c):
+    merged = headlines_for(c, ALL_TYPES)
+    singles = [headline_for(c, t) for t in ALL_TYPES]
+    assert merged.keys() == set().union(*(single.keys() for single in singles))
     for single in singles:
         for key, value in single.items():
             assert merged[key] == value
