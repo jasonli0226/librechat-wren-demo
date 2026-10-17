@@ -39,12 +39,12 @@ function yScalesWithin(chart: ChartShape, rows: readonly Row[]): boolean {
 export function fittingTypes(chart: ChartShape, rows: readonly Row[]): TileType[] {
   const n = rows.length
   const single = chart.y_fields.length === 1
-  const line = isLineShaped(chart, rows)
+  const hasNumbers = rows.some((r) => chart.y_fields.some((f) => isNumeric(r[f])))
+  const line = hasNumbers && isLineShaped(chart, rows)
   const types: TileType[] = []
 
   if (n === 1 && single && isNumeric(rows[0][chart.y_fields[0]])) types.push('stat')
   if (line) types.push('line')
-  const hasNumbers = rows.some((r) => isNumeric(r[chart.y_fields[0]]))
   if (!line && n >= MIN_LINE_ROWS && n <= MAX_STACKED_ROWS && single && chart.chart_type === 'pie' && hasNumbers) {
     types.push('stackedBar')
   }

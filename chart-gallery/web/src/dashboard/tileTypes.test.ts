@@ -36,6 +36,15 @@ describe('fittingTypes', () => {
     expect(fittingTypes(shape('pie'), rows)).toEqual(['table'])
   })
 
+  it('date-indexed rows whose y values are all null are not a line', () => {
+    const rows: Row[] = [
+      { k: '2026-01-01', v: null },
+      { k: '2026-01-02', v: null },
+      { k: '2026-01-03', v: null },
+    ]
+    expect(fittingTypes(shape('line'), rows)).toEqual(['table'])
+  })
+
   it('one numeric row is a stat', () => {
     const types = fittingTypes(shape('bar'), [{ k: 'a', v: 5 }])
     expect(types[0]).toBe('stat')
