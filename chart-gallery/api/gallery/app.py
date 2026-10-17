@@ -20,7 +20,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .arrange import ArrangeIn, build_user_message
 from .config import Settings
-from .headline import headline_for
+from .headline import headlines_for
 from .llm import LlmError, LlmFn, make_openrouter_llm
 from .models import ChartIn
 from .normalize import dedup_key, normalize_sql
@@ -198,7 +198,10 @@ def create_app(
             if chart is None:
                 return _error(422, f"unknown chart id {tile.chart_id}")
             charts.append(chart)
-        headlines = {tile.chart_id: headline_for(chart, tile.type) for chart, tile in zip(charts, arrange_in.tiles)}
+        headlines = {
+            tile.chart_id: headlines_for(chart, tile.allowed_types)
+            for chart, tile in zip(charts, arrange_in.tiles)
+        }
         try:
             spec = await arrange_llm(prompt, build_user_message(charts, arrange_in.tiles, headlines))
         except LlmError as exc:

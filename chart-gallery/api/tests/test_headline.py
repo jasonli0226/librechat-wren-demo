@@ -1,4 +1,4 @@
-from gallery.headline import headline_for
+from gallery.headline import headline_for, headlines_for
 
 
 def chart(pairs, x="k", y="v"):
@@ -55,3 +55,47 @@ def test_table_top():
 def test_bar_zero_total_omits_share():
     c = chart([("A", 0), ("B", 0)])
     assert "top_share_pct" not in headline_for(c, "bar")
+
+
+def scatter_chart(xs, ys, x="x", y="y"):
+    return {"rows": [{x: a, y: b} for a, b in zip(xs, ys)], "x_field": x, "y_fields": [y]}
+
+
+def test_scatter_x_mode():
+    c = scatter_chart([1, 2, 3, 4, 5], [2, 4, 6, 8, 10])
+    assert headline_for(c, "scatter") == {
+        "scatter_points": 5, "r": 1.0, "x_min": 1, "x_max": 5, "y_min": 2, "y_max": 10,
+    }
+
+
+def test_scatter_pair_mode_uses_first_two_y():
+    rows = [{"name": f"n{i}", "a": i, "b": 10 - i} for i in range(6)]
+    c = {"rows": rows, "x_field": "name", "y_fields": ["a", "b"]}
+    assert headline_for(c, "scatter") == {
+        "scatter_points": 6, "r": -1.0, "x_min": 0, "x_max": 5, "y_min": 5, "y_max": 10,
+    }
+
+
+def test_scatter_constant_axis_omits_r():
+    result = headline_for(scatter_chart([3] * 5, [1, 2, 3, 4, 5]), "scatter")
+    assert "r" not in result
+    assert result["scatter_points"] == 5
+
+
+def test_scatter_counts_only_rows_with_both_axes():
+    result = headline_for(scatter_chart([1, 2, 3, 4, 5], [2, None, 6, 8, 10]), "scatter")
+    assert result["scatter_points"] == 4
+
+
+def test_scatter_without_axes_falls_back_to_rows():
+    assert headline_for(scatter_chart([1, 2], [3, 4]), "scatter") == {"rows": 2}
+
+
+def test_headlines_for_merges_without_conflict():
+    c = chart([("A", 30), ("B", 50), ("C", 20)])
+    merged = headlines_for(c, ["bar", "table"])
+    singles = [headline_for(c, "bar"), headline_for(c, "table")]
+    assert merged.keys() == singles[0].keys() | singles[1].keys()
+    for single in singles:
+        for key, value in single.items():
+            assert merged[key] == value

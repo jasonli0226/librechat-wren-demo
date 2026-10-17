@@ -160,3 +160,14 @@ def test_app_starts_without_openrouter_key(tmp_path):
     client = TestClient(create_app(settings_for(tmp_path)))
     assert client.get("/healthz").status_code == 200
     assert client.post(URL, json={"tiles": [tile(1)]}).status_code == 503
+
+
+def test_headlines_merge_every_allowed_type(tmp_path):
+    body = {"tiles": [tile(1, "bar", ["bar", "scatter", "table"])]}
+    client = TestClient(create_app(settings_for(tmp_path), llm=FakeLlm()))
+    item = chart("Spread", "GROUP BY 1")
+    item["x_field"], item["y_fields"] = "n", ["v"]
+    item["rows"] = [{"n": i, "v": i * 2} for i in range(1, 7)]
+    assert client.post("/internal/charts", json=item, headers=AUTH).status_code == 200
+    data = client.post(URL, json=body).json()["data"]
+    assert {"top_value", "scatter_points"} <= data["headlines"]["1"].keys()
