@@ -166,6 +166,18 @@ librechat-wren-demo/
 - **Host check** — the gallery only answers `Host` headers in `GALLERY_ALLOWED_HOSTS` (default `localhost,127.0.0.1,chart-gallery`), so a DNS-rebinding page can't read chart data.
 - **Testing** — see [Testing the chart gallery](#testing-the-chart-gallery) and [Automated tests](#automated-tests).
 
+### Dashboard builder
+
+Turn a few saved charts into one dashboard page, at `/dashboard`.
+
+- **Flow** — type a search in the gallery and click **Build dashboard**, or click **Build dashboard** on a chart's page to start from that chart. The page picks the charts by meaning (on-device, same model as related charts), shows them at once in a rules-based layout (note: `Arranged by rules`), then asks the API to arrange them into titled sections with a one-line `AI summary`. If the AI answer is late (8 s), fails or doesn't validate, the rules layout stays.
+- **Params** — `/dashboard?from=<chart id>` or `?q=<search>` (not both), plus `min` (minimum match score, 0 to 1, default 0.5) and `max` (most tiles, 1 to 12, default 6). Both are editable on the page; **Rebuild** re-picks and re-arranges.
+- **Live data** — each tile re-runs its chart's SQL through Wren (`/api/charts/{id}/data`). If Wren is unreachable the tile shows the stored rows and says `snapshot from <time>`.
+- **AI arrangement** — set `OPENROUTER_KEY` in `.env` (the same key LibreChat uses) and optionally `GALLERY_LLM_MODEL` (default `z-ai/glm-4.5-air`). Without a key the endpoint refuses and every dashboard stays rules-based. Only chart titles, descriptions, table names, column names and headline numbers go to the model, never raw rows. The page validates the answer (every chart placed once, allowed tile types, numbers in the summary must match the headlines) and drops a summary whose numbers don't.
+- **Before a demo** — warm the model: the first request after idle can take longer than the 8 s window, which silently falls back to `Arranged by rules`. Build a dashboard once beforehand, then do it live.
+- **Rate limits** — in-process and per peer address: the arrange endpoint allows 6 calls per client and 30 in total per minute; the data endpoint 60 per client and 300 in total per minute. The limits key on the socket's peer address, so behind a reverse proxy every visitor shares one bucket until you add trusted `X-Forwarded-For` handling.
+- **Testing** — the Playwright specs in `chart-gallery/web/e2e/dashboard.spec.ts` cover the rules path (Wren unreachable, no key) and a stubbed AI arrangement.
+
 ### Key design decisions
 
 - **MDL is generated, not hand-written** — `gen_mdl.py` reads `information_schema` (tables, types, PKs, FKs) at container start. Swap `init.sql` for a client dump and the semantic layer regenerates itself. Enrich accuracy by adding entries to the `COLUMN_DOCS`/`TABLE_DOCS` dictionaries in `gen_mdl.py` (generated files are overwritten on every start).

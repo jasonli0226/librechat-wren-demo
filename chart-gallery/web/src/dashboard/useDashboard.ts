@@ -60,7 +60,8 @@ function useRanking(source: DashboardSource | null, max: number): Ranked[] | nul
     if (source.kind === 'chart') {
       return similar === null ? null : byConfidence(similar.map((r) => ({ item: r.item, confidence: r.confidence })))
     }
-    if (resultQuery !== query) return null
+    // `beliefs` lags `resultQuery` by a render under the commit policy, so an empty list is not an answer yet.
+    if (resultQuery !== query || beliefs.length === 0) return null
     return byConfidence(beliefs.map((b) => ({ item: b.value, confidence: b.confidence })))
   }, [ready, source, similar, beliefs, query, resultQuery])
 }

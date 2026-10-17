@@ -176,7 +176,8 @@ describe('DashboardPage', () => {
     mockApi(chartRoutes())
     const { store } = createFakeStore({ results: { zzz: queryResult([]) } })
     renderApp('/dashboard?q=zzz', store)
-    expect(await screen.findByText('No charts match “zzz”.')).toBeInTheDocument()
+    // An empty ranking is not trusted until the model wait ends; then the substring filter finds nothing either.
+    expect(await screen.findByText('No charts match “zzz”.', {}, { timeout: 3000 })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /back to the gallery/i })).toHaveAttribute('href', '/')
   })
 
