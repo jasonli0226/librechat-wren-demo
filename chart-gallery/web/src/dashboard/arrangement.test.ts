@@ -275,6 +275,14 @@ describe('summaryNumbersMatch', () => {
     expect(summaryNumbersMatch('r = -0.8', h({ r: -0.8 }), counts)).toBe(true)
   })
 
+  it('treats a typographic minus or en dash as a minus', () => {
+    for (const minus of ['−', '–']) {
+      expect(summaryNumbersMatch(`r = ${minus}0.8`, h({ r: 0.8 }), counts)).toBe(false)
+      expect(summaryNumbersMatch(`r = ${minus}0.8`, h({ r: -0.8 }), counts)).toBe(true)
+      expect(summaryNumbersMatch(`${minus}12%`, h({ pct_change: 12 }), counts)).toBe(false)
+    }
+  })
+
   it('matches an explicit plus only against a non-negative value', () => {
     expect(summaryNumbersMatch('+12%', h({ pct_change: -12 }), counts)).toBe(false)
     expect(summaryNumbersMatch('+12%', h({ pct_change: 12 }), counts)).toBe(true)

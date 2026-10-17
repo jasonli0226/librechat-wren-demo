@@ -189,7 +189,9 @@ function arrange(text: string, plans: readonly TilePlan[], headlines: Headlines)
   return filterInsights(filterTitles(spec, headlines, counts), headlines, counts)
 }
 
-const NUMBER = /(?:(?<![\w])[-+])?\$?\d[\d,]*(?:\.\d+)?\s*(?:%|(?:thousand|million|billion|k|m|b)(?![a-z]))?/gi
+// Models often write a typographic minus (U+2212) or an en dash (U+2013) for a negative sign.
+const NUMBER = /(?:(?<![\w])[-+−–])?\$?\d[\d,]*(?:\.\d+)?\s*(?:%|(?:thousand|million|billion|k|m|b)(?![a-z]))?/gi
+const MINUS_SIGNS = new Set(['-', '−', '–'])
 const MULTIPLIER: Record<string, number> = { '': 1, '%': 1, k: 1e3, thousand: 1e3, m: 1e6, million: 1e6, b: 1e9, billion: 1e9 }
 const YEAR_MIN = 1900
 const YEAR_MAX = 2100
@@ -212,9 +214,10 @@ function matchesValue(stated: number, sign: string, tolerance: number, v: number
 export function summaryNumbersMatch(summary: string, headlines: Headlines, counts: Counts): boolean {
   const values = Object.values(headlines).flatMap((h) => Object.values(h).filter((v): v is number => typeof v === 'number'))
   for (const [match] of summary.matchAll(NUMBER)) {
-    const parsed = /^([-+]?)\$?([\d,]+(?:\.(\d+))?)\s*(.*)$/i.exec(match)
+    const parsed = /^([-+−–]?)\$?([\d,]+(?:\.(\d+))?)\s*(.*)$/i.exec(match)
     if (!parsed) return false
-    const [, sign, digits, decimals = '', suffix] = parsed
+    const [, rawSign, digits, decimals = '', suffix] = parsed
+    const sign = MINUS_SIGNS.has(rawSign) ? '-' : rawSign
     const multiplier = MULTIPLIER[suffix.toLowerCase()] ?? 1
     const raw = Number(digits.replace(/,/g, ''))
     const isPlainInteger = decimals === '' && suffix === ''
