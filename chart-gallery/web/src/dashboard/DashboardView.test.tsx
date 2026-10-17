@@ -102,33 +102,43 @@ describe('DashboardView', () => {
     expect(tile.querySelector('.recharts-legend-wrapper')).not.toBeNull()
   })
 
-  it('renders section headings and the AI summary label for an AI spec', () => {
-    const plans = [plan(1, 'bar'), plan(2, 'table')]
+  it('renders AI insights beside the hero', () => {
+    const plans = [plan(1, 'bar'), plan(2, 'table'), plan(3, 'bar')]
+    const bullets = ['Kowloon leads revenue.', 'Central trails.']
     const spec: Spec = {
       root: 'dashboard',
       elements: {
-        dashboard: { type: 'Dashboard', props: { summary: 'Kowloon leads revenue.' }, children: ['s1', 's2'] },
-        s1: { type: 'Section', props: { title: 'Revenue' }, children: [tileKey(1)] },
-        s2: { type: 'Section', props: { title: 'Detail' }, children: [tileKey(2)] },
-        [tileKey(1)]: { type: 'BarTile', props: { chartId: 1, width: 'half' }, children: [] },
+        dashboard: { type: 'Dashboard', props: {}, children: ['hero', 's1', 's2'] },
+        hero: { type: 'Hero', props: {}, children: [tileKey(1), 'insights'] },
+        insights: { type: 'Insights', props: { bullets }, children: [] },
+        s1: { type: 'Section', props: { title: 'Revenue' }, children: [tileKey(2)] },
+        s2: { type: 'Section', props: { title: 'Detail' }, children: [tileKey(3)] },
+        [tileKey(1)]: { type: 'BarTile', props: { chartId: 1, width: 'full' }, children: [] },
         [tileKey(2)]: { type: 'TableTile', props: { chartId: 2, width: 'full' }, children: [] },
+        [tileKey(3)]: { type: 'BarTile', props: { chartId: 3, width: 'half' }, children: [] },
       },
     }
-    draw(plans, allLive(plans), spec)
+    const { container } = draw(plans, allLive(plans), spec)
+    const hero = container.querySelector('.dashboard-hero') as HTMLElement
+    expect(hero).not.toBeNull()
+    expect(within(hero).getByText('AI insights')).toBeInTheDocument()
+    for (const bullet of bullets) expect(within(hero).getByText(bullet)).toBeInTheDocument()
+    expect(within(hero).getByText('Chart 1')).toBeInTheDocument()
     expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual(['Revenue', 'Detail'])
-    expect(screen.getByText('AI summary')).toBeInTheDocument()
-    expect(screen.getByText('Kowloon leads revenue.')).toBeInTheDocument()
   })
 
-  it('omits the summary label and section heading in the rules spec', () => {
-    const plans = [plan(1, 'bar')]
-    draw(plans, allLive(plans))
-    expect(screen.queryByText('AI summary')).toBeNull()
+  it('puts the first plan in the hero and omits insights and section headings in the rules spec', () => {
+    const plans = [plan(1, 'bar'), plan(2, 'bar')]
+    const { container } = draw(plans, allLive(plans))
+    const hero = container.querySelector('.dashboard-hero') as HTMLElement
+    expect(within(hero).getByText('Chart 1')).toBeInTheDocument()
+    expect(within(hero).queryByText('Chart 2')).toBeNull()
+    expect(screen.queryByText('AI insights')).toBeNull()
     expect(screen.queryAllByRole('heading', { level: 2 })).toHaveLength(0)
   })
 
   it('each tile has a view-transition-name from its chart id', () => {
-    const plans = [plan(1, 'stat', [{ store: 'All', revenue: 3 }]), plan(7, 'bar'), plan(9, 'line')]
+    const plans = [plan(9, 'line'), plan(1, 'stat', [{ store: 'All', revenue: 3 }]), plan(7, 'bar')]
     draw(plans, new Map(plans.map((p) => [p.chart.id, snapshot(p)])))
     for (const p of plans) {
       expect(tileOf(p.chart.title).style.viewTransitionName).toBe(tileKey(p.chart.id))

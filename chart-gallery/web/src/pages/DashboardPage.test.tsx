@@ -59,13 +59,14 @@ const queryResult = (ranked: ResultRow<ChartSummary>[]): QueryResult<ChartSummar
   networkRequests: null,
 })
 
-/** A valid AI arrangement placing every chart as a table in one titled section. */
-function aiSpec(ids: number[], title = 'Store performance'): Spec {
+/** A valid AI arrangement placing every chart as a table: the first in the hero, the rest in one titled section. */
+function aiSpec([main, ...rest]: number[], title = 'Store performance'): Spec {
   const elements: Spec['elements'] = {
-    dashboard: { type: 'Dashboard', props: { summary: '' }, children: ['s1'] },
-    s1: { type: 'Section', props: { title }, children: ids.map(tileKey) },
+    dashboard: { type: 'Dashboard', props: {}, children: ['hero', 's1'] },
+    hero: { type: 'Hero', props: {}, children: [tileKey(main)] },
+    s1: { type: 'Section', props: { title }, children: rest.map(tileKey) },
   }
-  for (const id of ids) elements[tileKey(id)] = { type: 'TableTile', props: { chartId: id, width: 'full' }, children: [] }
+  for (const id of [main, ...rest]) elements[tileKey(id)] = { type: 'TableTile', props: { chartId: id, width: 'full' }, children: [] }
   return { root: 'dashboard', elements }
 }
 

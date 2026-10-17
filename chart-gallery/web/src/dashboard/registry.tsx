@@ -4,16 +4,17 @@ import { BarTile, LineTile, ScatterTile, StackedBarTile, StatTile, TableTile } f
 
 export const { registry } = defineRegistry(catalog, {
   components: {
-    Dashboard: ({ props, children }) => (
-      <div className="dashboard">
-        {props.summary ? (
-          <p className="dashboard-summary">
-            <span className="ai-label">AI summary</span>
-            <span>{props.summary}</span>
-          </p>
-        ) : null}
-        {children}
-      </div>
+    Dashboard: ({ children }) => <div className="dashboard">{children}</div>,
+    Hero: ({ children }) => <div className="tile-grid dashboard-hero">{children}</div>,
+    Insights: ({ props }) => (
+      <aside className="insights">
+        <span className="ai-label">AI insights</span>
+        <ul>
+          {props.bullets.map((bullet, i) => (
+            <li key={i}>{bullet}</li>
+          ))}
+        </ul>
+      </aside>
     ),
     Section: ({ props, children }) => (
       <section className="dashboard-section">

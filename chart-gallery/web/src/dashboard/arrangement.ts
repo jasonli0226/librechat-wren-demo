@@ -1,9 +1,9 @@
 import { compileSpecStream, validateSpec } from '@json-render/core'
 import type { Spec } from '@json-render/core'
-import { SUMMARY_MAX, TILE_COMPONENT, TITLE_MAX, catalog } from './catalog'
+import { INSIGHT_MAX, TILE_COMPONENT, TITLE_MAX, catalog } from './catalog'
 import type { Headlines, TilePlan } from './types'
 
-export type ArrangeResult = { ok: true; spec: Spec; summaryDropped: boolean } | { ok: false; reason: string }
+export type ArrangeResult = { ok: true; spec: Spec; bulletsDropped: number } | { ok: false; reason: string }
 
 type Element = Spec['elements'][string]
 type PropsSchema = { safeParse: (v: unknown) => { success: boolean } }
@@ -40,13 +40,14 @@ function compile(text: string): Record<string, unknown> | null {
   }
 }
 
-/** Returns a copy with the summary and section titles clipped to the catalog limits. */
+/** Returns a copy with insight bullets and section titles clipped to the catalog limits. */
 function truncateTexts(elements: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {}
   for (const [key, el] of Object.entries(elements)) {
-    if (isObject(el) && isObject(el.props) && (el.type === 'Dashboard' || el.type === 'Section')) {
-      const [prop, max] = el.type === 'Dashboard' ? ['summary', SUMMARY_MAX] : ['title', TITLE_MAX]
-      out[key] = { ...el, props: { ...el.props, [prop]: truncate(el.props[prop], max) } }
+    if (isObject(el) && isObject(el.props) && el.type === 'Section') {
+      out[key] = { ...el, props: { ...el.props, title: truncate(el.props.title, TITLE_MAX) } }
+    } else if (isObject(el) && isObject(el.props) && el.type === 'Insights' && Array.isArray(el.props.bullets)) {
+      out[key] = { ...el, props: { ...el.props, bullets: el.props.bullets.map((b) => truncate(b, INSIGHT_MAX)) } }
     } else {
       out[key] = el
     }
@@ -74,25 +75,35 @@ function checkElement(key: string, el: Element): string | null {
   return null
 }
 
-/** Checks Dashboard -> Sections -> tiles, every plan placed once with an allowed tile type. */
+/** Checks Dashboard -> Hero (main tile, optional Insights) -> Sections -> tiles, every plan placed once with an allowed type. */
 function checkLayout(spec: Spec, plans: readonly TilePlan[]): string | null {
   const root = spec.elements[spec.root]
   if (root?.type !== 'Dashboard') return 'root is not a Dashboard'
-  const sectionKeys = root.children ?? []
-  const tileKeys: string[] = []
+  const [heroKey, ...sectionKeys] = root.children ?? []
+  const hero = heroKey === undefined ? undefined : spec.elements[heroKey]
+  if (hero?.type !== 'Hero') return 'first root child is not a Hero'
+  const [heroTileKey, insightsKey, ...extra] = hero.children ?? []
+  if (heroTileKey === undefined || extra.length > 0) return 'hero must hold one tile and at most one Insights'
+  if (insightsKey !== undefined) {
+    const insights = spec.elements[insightsKey]
+    if (insights?.type !== 'Insights') return `hero child ${insightsKey} is not Insights`
+    if ((insights.children ?? []).length > 0) return 'Insights cannot have children'
+  }
+  const tileKeys: string[] = [heroTileKey]
   for (const key of sectionKeys) {
     const section = spec.elements[key]
     if (section?.type !== 'Section') return `root child ${key} is not a Section`
     tileKeys.push(...(section.children ?? []))
   }
-  if (Object.keys(spec.elements).length !== 1 + sectionKeys.length + tileKeys.length) {
+  const insightsCount = insightsKey === undefined ? 0 : 1
+  if (Object.keys(spec.elements).length !== 2 + insightsCount + sectionKeys.length + tileKeys.length) {
     return 'elements are orphaned or placed more than once'
   }
   const byId = new Map(plans.map((p) => [p.chart.id, p]))
   const seen = new Set<number>()
   for (const key of tileKeys) {
-    const tile = spec.elements[key] as Element
-    if (!TILE_TYPES.has(tile.type)) return `section child ${key} is not a tile`
+    const tile = spec.elements[key]
+    if (!tile || !TILE_TYPES.has(tile.type)) return `element ${key} is not a tile`
     const id = tile.props.chartId as number
     const plan = byId.get(id)
     if (!plan) return `unknown chart id ${id}`
@@ -101,7 +112,31 @@ function checkLayout(spec: Spec, plans: readonly TilePlan[]): string | null {
     if (!plan.allowed.some((t) => TILE_COMPONENT[t] === tile.type)) return `chart ${id} cannot be a ${tile.type}`
   }
   if (seen.size !== plans.length) return 'some chosen charts are missing'
+  const heroId = spec.elements[heroTileKey]?.props.chartId
+  if (heroId !== plans[0]?.chart.id) return `hero tile is chart ${String(heroId)}, not the main chart`
   return null
+}
+
+/** Keeps only bullets whose numbers all pass the number check; removes Insights when none survive. */
+function filterInsights(spec: Spec, headlines: Headlines, counts: { tiles: number; sections: number }): ArrangeResult {
+  const root = spec.elements[spec.root] as Element
+  const heroKey = (root.children ?? [])[0] as string
+  const hero = spec.elements[heroKey] as Element
+  const [heroTileKey, insightsKey] = hero.children ?? []
+  if (insightsKey === undefined) return { ok: true, spec, bulletsDropped: 0 }
+
+  const insights = spec.elements[insightsKey] as Element
+  const bullets = insights.props.bullets as string[]
+  const kept = bullets.filter((b) => summaryNumbersMatch(b, headlines, counts))
+  const bulletsDropped = bullets.length - kept.length
+  if (bulletsDropped === 0) return { ok: true, spec, bulletsDropped }
+  if (kept.length > 0) {
+    const elements = { ...spec.elements, [insightsKey]: { ...insights, props: { ...insights.props, bullets: kept } } }
+    return { ok: true, spec: { ...spec, elements }, bulletsDropped }
+  }
+  const { [insightsKey]: _removed, ...rest } = spec.elements
+  const elements = { ...rest, [heroKey]: { ...hero, children: [heroTileKey as string] } }
+  return { ok: true, spec: { ...spec, elements }, bulletsDropped }
 }
 
 /** Never throws: any unexpected exception from malformed model output becomes a rejection. */
@@ -133,12 +168,9 @@ function arrange(text: string, plans: readonly TilePlan[], headlines: Headlines)
   const layoutProblem = checkLayout(spec, plans)
   if (layoutProblem) return fail(layoutProblem)
 
-  const root = spec.elements[spec.root] as Element
-  const sections = root.children?.length ?? 0
-  const counts = { tiles: plans.length, sections }
-  if (summaryNumbersMatch(String(root.props.summary), headlines, counts)) return { ok: true, spec, summaryDropped: false }
-  const dropped = { ...root, props: { ...root.props, summary: '' } }
-  return { ok: true, spec: { ...spec, elements: { ...spec.elements, [spec.root]: dropped } }, summaryDropped: true }
+  // Root children are the Hero followed by Sections only, so the Hero is not counted as a section.
+  const sections = (spec.elements[spec.root]?.children?.length ?? 1) - 1
+  return filterInsights(spec, headlines, { tiles: plans.length, sections })
 }
 
 const NUMBER = /(?:(?<![\w])[-+])?\$?\d[\d,]*(?:\.\d+)?\s*(?:%|(?:thousand|million|billion|k|m|b)(?![a-z]))?/gi

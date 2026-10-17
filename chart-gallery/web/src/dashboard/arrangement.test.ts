@@ -3,7 +3,7 @@ import type { Spec } from '@json-render/core'
 import { describe, expect, it } from 'vitest'
 import type { ChartDetail } from '../types'
 import { validateArrangement, summaryNumbersMatch } from './arrangement'
-import { SUMMARY_MAX, TITLE_MAX } from './catalog'
+import { INSIGHT_MAX, TITLE_MAX } from './catalog'
 import { tileKey } from './rulesLayout'
 import type { Headlines, TilePlan, TileType } from './types'
 
@@ -21,15 +21,19 @@ const HEADLINES: Headlines = { '1': { value: 8_212_000, label: 'Revenue' }, '3':
 
 const tile = (type: string, chartId: unknown, width = 'half'): Element => ({ type, props: { chartId, width }, children: [] })
 
-/** A valid two-section arrangement of PLANS. */
-function twoSections(summary = 'Revenue reached $8.2M, up 12%.'): Spec {
+const BULLETS = ['Revenue reached $8.2M.', 'Trend is up 12%.']
+
+/** A valid arrangement of PLANS: chart 1 as the hero with insights, then two sections. */
+function heroSpec(bullets: string[] = BULLETS): Spec {
   return {
     root: 'dashboard',
     elements: {
-      dashboard: { type: 'Dashboard', props: { summary }, children: ['s-kpi', 's-trend'] },
-      's-kpi': { type: 'Section', props: { title: 'Headline' }, children: [tileKey(1)] },
-      's-trend': { type: 'Section', props: { title: 'Trends' }, children: [tileKey(2), tileKey(3)] },
-      [tileKey(1)]: tile('StatTile', 1, 'quarter'),
+      dashboard: { type: 'Dashboard', props: {}, children: ['hero', 's-bar', 's-trend'] },
+      hero: { type: 'Hero', props: {}, children: [tileKey(1), 'insights'] },
+      insights: { type: 'Insights', props: { bullets }, children: [] },
+      's-bar': { type: 'Section', props: { title: 'Breakdown' }, children: [tileKey(2)] },
+      's-trend': { type: 'Section', props: { title: 'Trends' }, children: [tileKey(3)] },
+      [tileKey(1)]: tile('StatTile', 1, 'full'),
       [tileKey(2)]: tile('BarTile', 2),
       [tileKey(3)]: tile('LineTile', 3, 'full'),
     },
@@ -49,90 +53,160 @@ const withElement = (spec: Spec, key: string, element: Element): Spec => ({ ...s
 const validate = (spec: Spec) => validateArrangement(toJsonl(spec), PLANS, HEADLINES)
 
 describe('validateArrangement', () => {
-  it('accepts a valid two-section arrangement', () => {
-    const result = validate(twoSections())
-    expect(result).toEqual({ ok: true, spec: twoSections(), summaryDropped: false })
+  it('accepts a valid hero arrangement', () => {
+    const result = validate(heroSpec())
+    expect(result).toEqual({ ok: true, spec: heroSpec(), bulletsDropped: 0 })
+  })
+
+  it('accepts a hero without insights and any valid hero width', () => {
+    const base = withElement(heroSpec(), 'hero', { type: 'Hero', props: {}, children: [tileKey(1)] })
+    const { insights: _gone, ...elements } = withElement(base, tileKey(1), tile('StatTile', 1, 'quarter')).elements
+    expect(validate({ ...base, elements })).toMatchObject({ ok: true, bulletsDropped: 0 })
   })
 
   it('ignores code fences and prose lines', () => {
-    const text = ['Here is your dashboard:', '```jsonl', toJsonl(twoSections()), '```'].join('\n')
-    expect(validateArrangement(text, PLANS, HEADLINES)).toMatchObject({ ok: true, summaryDropped: false })
+    const text = ['Here is your dashboard:', '```jsonl', toJsonl(heroSpec()), '```'].join('\n')
+    expect(validateArrangement(text, PLANS, HEADLINES)).toMatchObject({ ok: true, bulletsDropped: 0 })
   })
 
-  it('truncates an over-long summary and title instead of rejecting', () => {
-    const base = twoSections('x'.repeat(SUMMARY_MAX + 50))
-    const spec = withElement(base, 's-kpi', { type: 'Section', props: { title: 'y'.repeat(TITLE_MAX + 5) }, children: [tileKey(1)] })
+  it('truncates an over-long title instead of rejecting', () => {
+    const spec = withElement(heroSpec(), 's-bar', { type: 'Section', props: { title: 'y'.repeat(TITLE_MAX + 5) }, children: [tileKey(2)] })
     const result = validate(spec)
     if (!result.ok) throw new Error(result.reason)
-    const summary = result.spec.elements.dashboard!.props.summary as string
-    const title = result.spec.elements['s-kpi']!.props.title as string
-    expect(summary).toBe(`${'x'.repeat(SUMMARY_MAX - 1)}…`)
-    expect(title).toBe(`${'y'.repeat(TITLE_MAX - 1)}…`)
+    expect(result.spec.elements['s-bar']!.props.title).toBe(`${'y'.repeat(TITLE_MAX - 1)}…`)
+  })
+
+  it('truncates a 200-char bullet to 120 with an ellipsis', () => {
+    const result = validate(heroSpec(['x'.repeat(200)]))
+    if (!result.ok) throw new Error(result.reason)
+    expect(INSIGHT_MAX).toBe(120)
+    expect(result.spec.elements.insights!.props.bullets).toEqual([`${'x'.repeat(INSIGHT_MAX - 1)}…`])
   })
 
   it('rejects a missing chart id', () => {
-    const base = twoSections()
-    const spec = withElement(base, 's-trend', { type: 'Section', props: { title: 'Trends' }, children: [tileKey(2)] })
-    const { [tileKey(3)]: _dropped, ...elements } = spec.elements
+    const base = heroSpec()
+    const spec = withElement(base, 'dashboard', { type: 'Dashboard', props: {}, children: ['hero', 's-bar'] })
+    const { [tileKey(3)]: _tile, 's-trend': _section, ...elements } = spec.elements
     expect(validate({ ...spec, elements }).ok).toBe(false)
   })
 
   it('rejects a duplicated chart id', () => {
-    const spec = withElement(twoSections(), 's-trend', { type: 'Section', props: { title: 'Trends' }, children: [tileKey(2), tileKey(3), 'dup'] })
+    const spec = withElement(heroSpec(), 's-trend', { type: 'Section', props: { title: 'Trends' }, children: [tileKey(3), 'dup'] })
     expect(validate(withElement(spec, 'dup', tile('BarTile', 2))).ok).toBe(false)
   })
 
   it('rejects an unknown chart id', () => {
-    const spec = withElement(twoSections(), 's-trend', { type: 'Section', props: { title: 'Trends' }, children: [tileKey(2), tileKey(3), 'ghost'] })
+    const spec = withElement(heroSpec(), 's-trend', { type: 'Section', props: { title: 'Trends' }, children: [tileKey(3), 'ghost'] })
     expect(validate(withElement(spec, 'ghost', tile('BarTile', 99))).ok).toBe(false)
   })
 
   it('rejects a tile type outside allowed', () => {
-    expect(validate(withElement(twoSections(), tileKey(2), tile('LineTile', 2))).ok).toBe(false)
+    expect(validate(withElement(heroSpec(), tileKey(2), tile('LineTile', 2))).ok).toBe(false)
   })
 
   it('rejects a string chartId', () => {
-    expect(validate(withElement(twoSections(), tileKey(2), tile('BarTile', '2'))).ok).toBe(false)
+    expect(validate(withElement(heroSpec(), tileKey(2), tile('BarTile', '2'))).ok).toBe(false)
   })
 
   it('rejects state and on', () => {
-    expect(validate({ ...twoSections(), state: { x: 1 } }).ok).toBe(false)
+    expect(validate({ ...heroSpec(), state: { x: 1 } }).ok).toBe(false)
     const withOn = { ...tile('BarTile', 2), on: { press: { action: 'noop' } } } as Element
-    expect(validate(withElement(twoSections(), tileKey(2), withOn)).ok).toBe(false)
+    expect(validate(withElement(heroSpec(), tileKey(2), withOn)).ok).toBe(false)
   })
 
   it('rejects $-expressions in props', () => {
-    const expr = { type: 'Section', props: { title: { $state: '/t' } }, children: [tileKey(1)] } as unknown as Element
-    expect(validate(withElement(twoSections(), 's-kpi', expr)).ok).toBe(false)
+    const expr = { type: 'Section', props: { title: { $state: '/t' } }, children: [tileKey(2)] } as unknown as Element
+    expect(validate(withElement(heroSpec(), 's-bar', expr)).ok).toBe(false)
   })
 
-  it('rejects a non-Dashboard root and non-Section root children', () => {
-    expect(validate({ ...twoSections(), root: 's-kpi' }).ok).toBe(false)
-    const flat = withElement(twoSections(), 'dashboard', { type: 'Dashboard', props: { summary: '' }, children: [tileKey(1), 's-trend'] })
+  it('rejects a non-Dashboard root and non-Section root children after the hero', () => {
+    expect(validate({ ...heroSpec(), root: 's-bar' }).ok).toBe(false)
+    const flat = withElement(heroSpec(), 'dashboard', { type: 'Dashboard', props: {}, children: ['hero', tileKey(2), 's-trend'] })
     expect(validate(flat).ok).toBe(false)
   })
 
+  it('rejects a Section as the first root child', () => {
+    const spec = withElement(heroSpec(), 'dashboard', { type: 'Dashboard', props: {}, children: ['s-bar', 'hero', 's-trend'] })
+    expect(validate(spec)).toMatchObject({ ok: false })
+  })
+
+  it('rejects a spec whose hero tile is not plans[0]', () => {
+    const swapped = withElement(
+      withElement(heroSpec(), 'hero', { type: 'Hero', props: {}, children: [tileKey(2), 'insights'] }),
+      's-bar',
+      { type: 'Section', props: { title: 'Breakdown' }, children: [tileKey(1)] },
+    )
+    expect(validate(swapped)).toMatchObject({ ok: false })
+  })
+
+  it('rejects a hero tile type outside allowed', () => {
+    expect(validate(withElement(heroSpec(), tileKey(1), tile('BarTile', 1, 'full'))).ok).toBe(false)
+  })
+
+  it('rejects two Insights in the hero', () => {
+    const base = withElement(heroSpec(), 'hero', { type: 'Hero', props: {}, children: [tileKey(1), 'insights', 'insights-2'] })
+    const spec = withElement(base, 'insights-2', { type: 'Insights', props: { bullets: ['More.'] }, children: [] })
+    expect(validate(spec)).toMatchObject({ ok: false })
+  })
+
+  it('rejects a hero that starts with Insights or has no tile', () => {
+    expect(validate(withElement(heroSpec(), 'hero', { type: 'Hero', props: {}, children: ['insights', tileKey(1)] })).ok).toBe(false)
+    const empty = withElement(heroSpec(), 'hero', { type: 'Hero', props: {}, children: [] })
+    const { insights: _i, [tileKey(1)]: _t, ...elements } = empty.elements
+    expect(validate({ ...empty, elements }).ok).toBe(false)
+  })
+
+  it('rejects Insights with children', () => {
+    const spec = withElement(heroSpec(), 'insights', { type: 'Insights', props: { bullets: BULLETS }, children: [tileKey(2)] })
+    expect(validate(spec).ok).toBe(false)
+  })
+
+  it('rejects empty or more than five bullets', () => {
+    expect(validate(heroSpec([])).ok).toBe(false)
+    expect(validate(heroSpec(Array.from({ length: 6 }, () => 'Steady.'))).ok).toBe(false)
+  })
+
   it('rejects an unknown element type', () => {
-    expect(validate(withElement(twoSections(), tileKey(2), tile('PieTile', 2))).ok).toBe(false)
+    expect(validate(withElement(heroSpec(), tileKey(2), tile('PieTile', 2))).ok).toBe(false)
   })
 
   it('rejects a null element and non-array children without throwing', () => {
     const nullLine = JSON.stringify({ op: 'add', path: '/elements/x', value: null })
-    expect(validateArrangement(`${toJsonl(twoSections())}\n${nullLine}`, PLANS, HEADLINES).ok).toBe(false)
+    expect(validateArrangement(`${toJsonl(heroSpec())}\n${nullLine}`, PLANS, HEADLINES).ok).toBe(false)
     const badChildren = { ...tile('BarTile', 2), children: 5 } as unknown as Element
-    expect(validate(withElement(twoSections(), tileKey(2), badChildren)).ok).toBe(false)
+    expect(validate(withElement(heroSpec(), tileKey(2), badChildren)).ok).toBe(false)
   })
 
   it('rejects unparseable text', () => {
     expect(validateArrangement('not json', PLANS, HEADLINES).ok).toBe(false)
   })
 
-  it('drops only the summary when it cites an unknown number', () => {
-    const result = validate(twoSections('Revenue hit $9M.'))
+  it('drops only the bullet with an unknown number', () => {
+    const result = validate(heroSpec([BULLETS[0], 'Revenue hit $9M.', BULLETS[1]]))
     if (!result.ok) throw new Error(result.reason)
-    expect(result.summaryDropped).toBe(true)
-    expect(result.spec.elements.dashboard).toEqual({ ...twoSections().elements.dashboard, props: { summary: '' } })
-    expect(result.spec.elements['s-trend']).toEqual(twoSections().elements['s-trend'])
+    expect(result.bulletsDropped).toBe(1)
+    expect(result.spec.elements.insights!.props.bullets).toEqual(BULLETS)
+    expect(result.spec.elements.hero).toEqual(heroSpec().elements.hero)
+    expect(result.spec.elements['s-trend']).toEqual(heroSpec().elements['s-trend'])
+  })
+
+  it('removes Insights when every bullet fails', () => {
+    const result = validate(heroSpec(['Revenue hit $9M.', 'Up 99%.']))
+    if (!result.ok) throw new Error(result.reason)
+    expect(result.bulletsDropped).toBe(2)
+    expect(result.spec.elements.hero!.children).toEqual([tileKey(1)])
+    expect(result.spec.elements.insights).toBeUndefined()
+  })
+
+  it('counts sections without the hero', () => {
+    const plans = [...PLANS, plan(4, 'bar')]
+    const spec = withElement(
+      withElement(heroSpec(['4 charts in 2 groups']), 's-trend', { type: 'Section', props: { title: 'Trends' }, children: [tileKey(3), tileKey(4)] }),
+      tileKey(4),
+      tile('BarTile', 4),
+    )
+    const result = validateArrangement(toJsonl(spec), plans, {})
+    expect(result).toMatchObject({ ok: true, bulletsDropped: 0 })
   })
 })
 

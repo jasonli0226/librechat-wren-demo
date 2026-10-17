@@ -1,9 +1,10 @@
 // @vitest-environment node
 import { validateSpec } from '@json-render/core'
+import type { Spec } from '@json-render/core'
 import { describe, expect, it } from 'vitest'
 import type { ChartDetail } from '../types'
 import { catalog } from './catalog'
-import { buildRulesSpec, orderTiles, tileKey } from './rulesLayout'
+import { HERO_KEY, buildRulesSpec, tileKey } from './rulesLayout'
 import type { TilePlan, TileType } from './types'
 
 const plan = (id: number, type: TileType, tables: string[] = ['orders']): TilePlan => ({
@@ -13,31 +14,39 @@ const plan = (id: number, type: TileType, tables: string[] = ['orders']): TilePl
   confidence: null,
 })
 
-const tiles = (plans: TilePlan[]) => {
-  const spec = buildRulesSpec(plans)
-  return (spec.elements['section-1']!.children ?? []).map((key) => {
-    const el = spec.elements[key]!
+const placed = (spec: Spec, key: string) =>
+  (spec.elements[key]?.children ?? []).map((k) => {
+    const el = spec.elements[k]!
     return [el.props.chartId, el.props.width]
   })
-}
+
+const tiles = (plans: TilePlan[]) => placed(buildRulesSpec(plans), 'section-1')
 
 describe('buildRulesSpec', () => {
-  it('puts stats first at quarter width', () => {
-    expect(tiles([plan(1, 'bar'), plan(2, 'stat'), plan(3, 'stat')])).toEqual([[2, 'quarter'], [3, 'quarter'], [1, 'full']])
+  it('hero is the first plan even when it is a stat', () => {
+    const spec = buildRulesSpec([plan(1, 'stat'), plan(2, 'bar'), plan(3, 'stat')])
+    expect(spec.elements.dashboard!.children).toEqual([HERO_KEY, 'section-1'])
+    expect(spec.elements[HERO_KEY]!.type).toBe('Hero')
+    expect(placed(spec, HERO_KEY)).toEqual([[1, 'full']])
+    expect(tiles([plan(1, 'stat'), plan(2, 'bar'), plan(3, 'stat')])).toEqual([[3, 'quarter'], [2, 'full']])
   })
 
-  it('makes lines full width; bar, table, bar are half, half, full', () => {
-    expect(tiles([plan(1, 'line')])).toEqual([[1, 'full']])
-    expect(tiles([plan(1, 'bar'), plan(2, 'table'), plan(3, 'bar')])).toEqual([[1, 'half'], [2, 'half'], [3, 'full']])
+  it('single plan gives a hero and no section', () => {
+    const spec = buildRulesSpec([plan(1, 'line')])
+    expect(spec.elements.dashboard!.children).toEqual([HERO_KEY])
+    expect(spec.elements['section-1']).toBeUndefined()
+    expect(placed(spec, HERO_KEY)).toEqual([[1, 'full']])
+    expect(Object.keys(spec.elements).sort()).toEqual(['dashboard', HERO_KEY, tileKey(1)].sort())
   })
 
-  it('does not split a pair with a line between two bars', () => {
-    expect(tiles([plan(1, 'bar'), plan(2, 'line'), plan(3, 'bar')])).toEqual([[1, 'half'], [3, 'half'], [2, 'full']])
+  it('supporting tiles keep score order', () => {
+    const plans = [plan(1, 'bar', ['orders']), plan(2, 'bar', ['inventory']), plan(3, 'bar', ['orders']), plan(4, 'bar', ['inventory'])]
+    expect(buildRulesSpec(plans).elements['section-1']!.children).toEqual([tileKey(2), tileKey(3), tileKey(4)])
   })
 
-  it('keeps tiles sharing a table adjacent', () => {
-    const plans = [plan(1, 'bar', ['orders']), plan(2, 'bar', ['inventory']), plan(3, 'bar', ['orders'])]
-    expect(orderTiles(plans).map((p) => p.chart.id)).toEqual([1, 3, 2])
+  it('pairs halves and makes a lone leftover full', () => {
+    const widths = tiles([plan(1, 'bar'), plan(2, 'bar'), plan(3, 'line'), plan(4, 'table')]).map(([, w]) => w)
+    expect(widths).toEqual(['half', 'half', 'full'])
   })
 
   it('gives every element children and passes validateSpec', () => {
@@ -47,12 +56,11 @@ describe('buildRulesSpec', () => {
     expect(validateSpec(spec).valid).toBe(true)
   })
 
-  it('gives tiles {chartId, width} props accepted by the catalog', () => {
+  it('gives every element props accepted by the catalog', () => {
     const components = catalog.data.components as Record<string, { props: { safeParse: (v: unknown) => { success: boolean } } }>
     const spec = buildRulesSpec([plan(1, 'stat'), plan(2, 'line'), plan(3, 'stackedBar')])
-    expect(spec.elements[tileKey(2)]!.props).toEqual({ chartId: 2, width: 'full' })
-    for (const key of (spec.elements['section-1']!.children ?? [])) {
-      const { type, props } = spec.elements[key]!
+    expect(spec.elements[tileKey(2)]!.props).toEqual({ chartId: 2, width: 'half' })
+    for (const { type, props } of Object.values(spec.elements)) {
       expect(components[type].props.safeParse(props).success).toBe(true)
     }
   })
