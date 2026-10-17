@@ -52,7 +52,8 @@ export interface ArrangeTile {
   allowed_types: TileType[]
 }
 
-export const fetchChartData = (id: number) => getJson<LiveData>(`/api/charts/${id}/data`)
+export const fetchChartData = (id: number, signal?: AbortSignal) =>
+  requestJson<LiveData>(`/api/charts/${id}/data`, { signal })
 
 export const arrangeDashboard = (tiles: ArrangeTile[], signal?: AbortSignal) =>
   requestJson<{ spec: string; headlines: Headlines }>('/api/dashboards/arrange', {

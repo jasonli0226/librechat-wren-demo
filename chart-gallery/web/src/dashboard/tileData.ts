@@ -9,6 +9,13 @@ export type TileData =
   | { status: 'snapshot'; rows: readonly Row[]; since: string }
 
 const LOADING: TileData = { status: 'loading' }
+// A hung Wren would leave tiles as skeletons; past this the tile shows its snapshot instead.
+export const TILE_DATA_TIMEOUT_MS = 3000
+
+interface Pending {
+  controller: AbortController
+  timer: ReturnType<typeof setTimeout>
+}
 
 function snapshotOf(plan: TilePlan): TileData {
   return { status: 'snapshot', rows: plan.chart.rows, since: plan.chart.updated_at }
@@ -30,12 +37,19 @@ export function effectiveType(plan: TilePlan, data: TileData): TileType {
 export function useTileData(plans: readonly TilePlan[]): ReadonlyMap<number, TileData> {
   const [results, setResults] = useState<ReadonlyMap<number, TileData>>(new Map())
   const requested = useRef(new Set<number>())
-  const mounted = useRef(true)
+  const pending = useRef(new Map<number, Pending>())
 
   useEffect(() => {
-    mounted.current = true
+    const inFlight = pending.current
+    const ids = requested.current
     return () => {
-      mounted.current = false
+      // Unfinished requests are forgotten so a remount (StrictMode) asks again.
+      for (const [id, { controller, timer }] of inFlight) {
+        clearTimeout(timer)
+        controller.abort()
+        ids.delete(id)
+      }
+      inFlight.clear()
     }
   }, [])
 
@@ -44,12 +58,23 @@ export function useTileData(plans: readonly TilePlan[]): ReadonlyMap<number, Til
       const id = plan.chart.id
       if (requested.current.has(id)) continue
       requested.current.add(id)
-      fetchChartData(id)
+      const controller = new AbortController()
+      const settle = (data: TileData) => {
+        const entry = pending.current.get(id)
+        if (entry?.controller !== controller) return
+        clearTimeout(entry.timer)
+        pending.current.delete(id)
+        setResults((prev) => new Map(prev).set(id, data))
+      }
+      const timer = setTimeout(() => {
+        settle(snapshotOf(plan))
+        controller.abort()
+      }, TILE_DATA_TIMEOUT_MS)
+      pending.current.set(id, { controller, timer })
+      fetchChartData(id, controller.signal)
         .then((live) => resolveLiveRows(plan, live))
         .catch(() => snapshotOf(plan))
-        .then((data) => {
-          if (mounted.current) setResults((prev) => new Map(prev).set(id, data))
-        })
+        .then(settle)
     }
   }, [plans])
 

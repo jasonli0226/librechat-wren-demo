@@ -52,6 +52,14 @@ describe('api', () => {
     await expect(fetchChartData(4)).resolves.toEqual(data)
   })
 
+  it('fetchChartData passes its signal to fetch and lets an abort propagate', async () => {
+    const fetchMock = vi.fn(async () => { throw new DOMException('aborted', 'AbortError') })
+    vi.stubGlobal('fetch', fetchMock)
+    const { signal } = new AbortController()
+    await expect(fetchChartData(4, signal)).rejects.toMatchObject({ name: 'AbortError' })
+    expect(fetchMock).toHaveBeenCalledWith('/api/charts/4/data', { signal })
+  })
+
   it('fetchChartData surfaces a 429 as ApiError with status 429', async () => {
     mockApi({ '/api/charts/4/data': fail(429, 'slow down') })
     await expect(fetchChartData(4)).rejects.toEqual(new ApiError('slow down', 429))

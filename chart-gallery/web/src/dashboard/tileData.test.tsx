@@ -1,9 +1,9 @@
-import { renderHook, waitFor } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { act, renderHook, waitFor } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DETAIL } from '../test/fixtures'
 import { fail, mockApi, ok } from '../test/mockApi'
 import type { ChartDetail } from '../types'
-import { effectiveType, resolveLiveRows, useTileData } from './tileData'
+import { effectiveType, resolveLiveRows, TILE_DATA_TIMEOUT_MS, useTileData } from './tileData'
 import type { Row, TilePlan } from './types'
 
 const SINCE = '2026-10-16T09:00:00+00:00'
@@ -19,6 +19,23 @@ const LIVE_ROWS = [
   { store_name: 'A', return_rate: 0.5 },
   { store_name: 'B', return_rate: 0.7 },
 ]
+
+/** A fetch that never answers, recording each request's signal. */
+function hangingFetch() {
+  const signals: AbortSignal[] = []
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.signal) signals.push(init.signal)
+      return new Promise<Response>(() => {})
+    }),
+  )
+  return signals
+}
+
+afterEach(() => {
+  vi.useRealTimers()
+})
 
 describe('useTileData', () => {
   it('live rows replace loading', async () => {
@@ -54,6 +71,34 @@ describe('useTileData', () => {
     rerender({ plans: [plan(1), plan(2), plan(3)] })
     expect(fetchMock).toHaveBeenCalledTimes(3)
     await waitFor(() => expect(result.current.get(3)?.status).toBe('live'))
+  })
+
+  it('a request still pending after 3 s is aborted and shows the snapshot', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const signals = hangingFetch()
+    const plans = [plan(1)]
+    const { result } = renderHook(() => useTileData(plans))
+    expect(TILE_DATA_TIMEOUT_MS).toBe(3000)
+
+    await act(async () => {
+      vi.advanceTimersByTime(TILE_DATA_TIMEOUT_MS - 1)
+    })
+    expect(result.current.get(1)).toEqual({ status: 'loading' })
+    expect(signals[0].aborted).toBe(false)
+
+    await act(async () => {
+      vi.advanceTimersByTime(1)
+    })
+    expect(result.current.get(1)).toEqual({ status: 'snapshot', rows: DETAIL.rows, since: SINCE })
+    expect(signals[0].aborted).toBe(true)
+  })
+
+  it('unmounting aborts pending requests', () => {
+    const signals = hangingFetch()
+    const plans = [plan(1), plan(2)]
+    const { unmount } = renderHook(() => useTileData(plans))
+    unmount()
+    expect(signals.map((s) => s.aborted)).toEqual([true, true])
   })
 })
 
