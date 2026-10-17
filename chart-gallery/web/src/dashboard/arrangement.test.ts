@@ -130,6 +130,14 @@ describe('validateArrangement', () => {
     expect(validate(spec)).toMatchObject({ ok: false })
   })
 
+  it('rejects a duplicate Section key among root children', () => {
+    // The repeat plus one unused element would balance the element count and inflate the section count.
+    const base = withElement(heroSpec(['3 charts in 4 sections']), 'dashboard', { type: 'Dashboard', props: {}, children: ['hero', 's-bar', 's-trend', 's-empty', 's-empty'] })
+    const empty: Element = { type: 'Section', props: { title: 'Spare' }, children: [] }
+    const spec = withElement(withElement(base, 's-empty', empty), 'unused', empty)
+    expect(validate(spec)).toEqual({ ok: false, reason: 'element s-empty is placed more than once' })
+  })
+
   it('rejects a spec whose hero tile is not plans[0]', () => {
     const swapped = withElement(
       withElement(heroSpec(), 'hero', { type: 'Hero', props: {}, children: [tileKey(2), 'insights'] }),
@@ -179,6 +187,15 @@ describe('validateArrangement', () => {
 
   it('rejects unparseable text', () => {
     expect(validateArrangement('not json', PLANS, HEADLINES).ok).toBe(false)
+  })
+
+  it('checks a bullet in its truncated form', () => {
+    const lateNumber = `${'x'.repeat(INSIGHT_MAX + 10)} 999`
+    const earlyNumber = `999 ${'x'.repeat(INSIGHT_MAX + 10)}`
+    const result = validate(heroSpec([lateNumber, earlyNumber]))
+    if (!result.ok) throw new Error(result.reason)
+    expect(result.bulletsDropped).toBe(1)
+    expect(result.spec.elements.insights!.props.bullets).toEqual([`${'x'.repeat(INSIGHT_MAX - 1)}…`])
   })
 
   it('drops only the bullet with an unknown number', () => {

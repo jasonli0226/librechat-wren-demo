@@ -95,6 +95,10 @@ function checkLayout(spec: Spec, plans: readonly TilePlan[]): string | null {
     if (section?.type !== 'Section') return `root child ${key} is not a Section`
     tileKeys.push(...(section.children ?? []))
   }
+  // A repeated key could balance the element count below while inflating the section count the number check uses.
+  const placedKeys = [heroKey, ...(hero.children ?? []), ...sectionKeys, ...tileKeys.slice(1)]
+  const repeated = placedKeys.find((key, i) => placedKeys.indexOf(key) !== i)
+  if (repeated !== undefined) return `element ${repeated} is placed more than once`
   const insightsCount = insightsKey === undefined ? 0 : 1
   if (Object.keys(spec.elements).length !== 2 + insightsCount + sectionKeys.length + tileKeys.length) {
     return 'elements are orphaned or placed more than once'
