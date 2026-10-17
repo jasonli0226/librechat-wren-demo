@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import hmac
 import logging
 import mimetypes
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
@@ -17,11 +19,18 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from .config import Settings
 from .models import ChartIn
 from .normalize import dedup_key, normalize_sql
+from .ratelimit import RateLimiter
 from .repository import ChartRepository, NewChart
+from .wren import QueryFn, WrenError, make_wren_query
 
 MAX_BODY_BYTES = 1_000_000
 # Paths that must 404 instead of falling back to index.html.
 NON_SPA_PREFIXES = ("api/", "internal/", "assets/", "models/", "ort/")
+# Live-data limits: a 12-tile dashboard loaded twice (load + rebuild) must fit per client.
+DATA_PER_CLIENT = 60
+DATA_TOTAL = 300
+DATA_WINDOW_S = 60.0
+DATA_CONCURRENCY = 4
 
 logger = logging.getLogger("gallery")
 mimetypes.add_type("application/wasm", ".wasm")
@@ -47,9 +56,16 @@ class SpaStaticFiles(StaticFiles):
             return await super().get_response("index.html", scope)
 
 
-def create_app(settings: Settings, repo: ChartRepository | None = None) -> FastAPI:
+def create_app(
+    settings: Settings,
+    repo: ChartRepository | None = None,
+    query: QueryFn | None = None,
+) -> FastAPI:
     repository = repo or ChartRepository(settings.db_path)
     repository.init_schema()
+    run_query = query or make_wren_query(settings.wren_mcp_url)
+    data_limiter = RateLimiter(DATA_PER_CLIENT, DATA_TOTAL, DATA_WINDOW_S)
+    data_slots = asyncio.Semaphore(DATA_CONCURRENCY)
     expected_auth = f"Bearer {settings.token}".encode()
     app = FastAPI(title="Chart Gallery", docs_url=None, redoc_url=None, openapi_url=None)
 
@@ -108,6 +124,32 @@ def create_app(settings: Settings, repo: ChartRepository | None = None) -> FastA
         if chart is None:
             raise HTTPException(status_code=404, detail="chart not found")
         return envelope(chart)
+
+    @app.get("/api/charts/{chart_id}/data", response_model=None)
+    async def chart_data(chart_id: int, request: Request) -> dict[str, Any] | JSONResponse:
+        client_host = request.client.host if request.client else "unknown"
+        if not data_limiter.allow(client_host):
+            return _error(429, "too many requests")
+        chart = repository.get(chart_id)
+        if chart is None:
+            return _error(404, "chart not found")
+        try:
+            async with data_slots:
+                result = await run_query(chart["sql"])
+        except WrenError as exc:
+            logger.warning("live query failed for chart %s: %s", chart_id, exc)
+            return _error(502, "live query failed")
+        except TimeoutError:
+            logger.warning("live query timed out for chart %s", chart_id)
+            return _error(504, "live query timed out")
+        return envelope(
+            {
+                "rows": result["rows"],
+                "columns": result["columns"],
+                "truncated": result["truncated"],
+                "ran_at": datetime.now(timezone.utc).isoformat(),
+            }
+        )
 
     @app.get("/healthz", response_model=None)
     def healthz() -> dict[str, Any] | JSONResponse:
