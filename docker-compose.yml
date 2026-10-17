@@ -61,6 +61,8 @@ services:
       CHART_GALLERY_TOKEN: ${CHART_GALLERY_TOKEN:?run scripts/gen-env.sh}
       GALLERY_PUBLIC_URL: http://localhost:3090
       WREN_MCP_URL: http://wren-mcp:7080/mcp
+      OPENROUTER_KEY: ${OPENROUTER_KEY:-}
+      GALLERY_LLM_MODEL: ${GALLERY_LLM_MODEL:-z-ai/glm-4.5-air}
     volumes:
       - gallery_data:/data
     ports:

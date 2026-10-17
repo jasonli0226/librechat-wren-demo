@@ -1,0 +1,62 @@
+import asyncio
+import json
+
+import httpx
+import pytest
+
+from gallery.llm import LlmError, make_openrouter_llm
+
+KEY = "sk-or-secret"
+
+
+def run(handler, system="s", user="u"):
+    llm = make_openrouter_llm(KEY, "test/model", transport=httpx.MockTransport(handler))
+    return asyncio.run(llm(system, user))
+
+
+def ok(content="hello"):
+    return httpx.Response(200, json={"choices": [{"message": {"content": content}}]})
+
+
+def test_sends_model_messages_and_auth():
+    seen = {}
+
+    def handler(request):
+        seen["url"] = str(request.url)
+        seen["auth"] = request.headers["authorization"]
+        seen["body"] = json.loads(request.content)
+        return ok()
+
+    run(handler, "SYS", "USER")
+    assert seen["url"] == "https://openrouter.ai/api/v1/chat/completions"
+    assert seen["auth"] == f"Bearer {KEY}"
+    assert seen["body"]["model"] == "test/model"
+    assert seen["body"]["temperature"] == 0.2
+    assert seen["body"]["max_tokens"] == 1500
+    assert seen["body"]["messages"] == [
+        {"role": "system", "content": "SYS"},
+        {"role": "user", "content": "USER"},
+    ]
+
+
+def test_returns_message_content():
+    assert run(lambda r: ok('{"op":"add"}')) == '{"op":"add"}'
+
+
+def test_non_200_raises_without_key():
+    with pytest.raises(LlmError) as exc:
+        run(lambda r: httpx.Response(401, text=f"bad key {KEY}"))
+    assert KEY not in str(exc.value)
+
+
+def test_bad_body_raises():
+    with pytest.raises(LlmError):
+        run(lambda r: httpx.Response(200, json={"choices": []}))
+
+
+def test_timeout_raises_timeout_error():
+    def handler(request):
+        raise httpx.ReadTimeout("slow", request=request)
+
+    with pytest.raises(TimeoutError):
+        run(handler)

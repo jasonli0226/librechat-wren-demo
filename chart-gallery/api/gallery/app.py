@@ -7,16 +7,21 @@ import hmac
 import logging
 import mimetypes
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import ValidationError
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from .arrange import ArrangeIn, build_user_message
 from .config import Settings
+from .headline import headline_for
+from .llm import LlmError, LlmFn, make_openrouter_llm
 from .models import ChartIn
 from .normalize import dedup_key, normalize_sql
 from .ratelimit import RateLimiter
@@ -31,6 +36,9 @@ DATA_PER_CLIENT = 60
 DATA_TOTAL = 300
 DATA_WINDOW_S = 60.0
 DATA_CONCURRENCY = 4
+ARRANGE_PER_CLIENT = 6
+ARRANGE_TOTAL = 30
+ARRANGE_WINDOW_S = 60.0
 
 logger = logging.getLogger("gallery")
 mimetypes.add_type("application/wasm", ".wasm")
@@ -42,6 +50,17 @@ def envelope(data: Any = None, error: str | None = None) -> dict[str, Any]:
 
 def _error(status: int, message: str) -> JSONResponse:
     return JSONResponse(envelope(error=message), status_code=status)
+
+
+def _read_prompt(path: str | None) -> str | None:
+    """The arrange system prompt, read per request; None when missing or unreadable."""
+    if not path:
+        return None
+    try:
+        return Path(path).read_text(encoding="utf-8")
+    except (OSError, ValueError):
+        logger.warning("arrange prompt file unreadable")
+        return None
 
 
 class SpaStaticFiles(StaticFiles):
@@ -60,11 +79,16 @@ def create_app(
     settings: Settings,
     repo: ChartRepository | None = None,
     query: QueryFn | None = None,
+    llm: LlmFn | None = None,
 ) -> FastAPI:
     repository = repo or ChartRepository(settings.db_path)
     repository.init_schema()
     run_query = query or make_wren_query(settings.wren_mcp_url)
     data_limiter = RateLimiter(DATA_PER_CLIENT, DATA_TOTAL, DATA_WINDOW_S)
+    arrange_llm = llm or (
+        make_openrouter_llm(settings.openrouter_key, settings.llm_model) if settings.openrouter_key else None
+    )
+    arrange_limiter = RateLimiter(ARRANGE_PER_CLIENT, ARRANGE_TOTAL, ARRANGE_WINDOW_S)
     data_slots = asyncio.Semaphore(DATA_CONCURRENCY)
     expected_auth = f"Bearer {settings.token}".encode()
     app = FastAPI(title="Chart Gallery", docs_url=None, redoc_url=None, openapi_url=None)
@@ -150,6 +174,36 @@ def create_app(
                 "ran_at": datetime.now(timezone.utc).isoformat(),
             }
         )
+
+    @app.post("/api/dashboards/arrange", response_model=None)
+    async def arrange(request: Request) -> dict[str, Any] | JSONResponse:
+        # Rate limit first so rejected and id-probing requests still spend budget.
+        client_host = request.client.host if request.client else "unknown"
+        if not arrange_limiter.allow(client_host):
+            return _error(429, "too many requests")
+        prompt = _read_prompt(settings.prompt_path)
+        if arrange_llm is None or prompt is None:
+            return _error(503, "AI arrangement disabled")
+        try:
+            arrange_in = ArrangeIn.model_validate_json(await request.body())
+        except ValidationError as exc:
+            raise RequestValidationError([{**err, "loc": ("body", *err["loc"])} for err in exc.errors()]) from None
+        charts = []
+        for tile in arrange_in.tiles:
+            chart = repository.get(tile.chart_id)
+            if chart is None:
+                return _error(422, f"unknown chart id {tile.chart_id}")
+            charts.append(chart)
+        headlines = {tile.chart_id: headline_for(chart, tile.type) for chart, tile in zip(charts, arrange_in.tiles)}
+        try:
+            spec = await arrange_llm(prompt, build_user_message(charts, arrange_in.tiles, headlines))
+        except LlmError as exc:
+            logger.warning("AI arrangement failed: %s", exc)
+            return _error(502, "AI arrangement failed")
+        except TimeoutError:
+            logger.warning("AI arrangement timed out")
+            return _error(504, "AI arrangement timed out")
+        return envelope({"spec": spec, "headlines": {str(chart_id): value for chart_id, value in headlines.items()}})
 
     @app.get("/healthz", response_model=None)
     def healthz() -> dict[str, Any] | JSONResponse:
