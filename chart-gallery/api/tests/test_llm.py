@@ -1,10 +1,11 @@
 import asyncio
+import inspect
 import json
 
 import httpx
 import pytest
 
-from gallery.llm import LlmError, make_openrouter_llm
+from gallery.llm import DEFAULT_TIMEOUT_S, LlmError, make_openrouter_llm
 
 KEY = "sk-or-secret"
 
@@ -52,6 +53,12 @@ def test_non_200_raises_without_key():
 def test_bad_body_raises():
     with pytest.raises(LlmError):
         run(lambda r: httpx.Response(200, json={"choices": []}))
+
+
+def test_default_deadline_is_under_the_browsers_8_s_wait():
+    # The browser gives up at 8 s and the server's clock starts later; 7 s keeps paid answers deliverable.
+    assert DEFAULT_TIMEOUT_S == 7.0
+    assert inspect.signature(make_openrouter_llm).parameters["timeout"].default == DEFAULT_TIMEOUT_S
 
 
 def test_timeout_raises_timeout_error():

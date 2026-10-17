@@ -10,7 +10,7 @@ import httpx
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 LLM_TEMPERATURE = 0.2
 LLM_MAX_TOKENS = 1500
-DEFAULT_TIMEOUT_S = 8.0
+DEFAULT_TIMEOUT_S = 7.0
 
 # (system prompt, user message) -> the model's text.
 LlmFn = Callable[[str, str], Awaitable[str]]
