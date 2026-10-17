@@ -6,8 +6,9 @@ export const ok = <T,>(data: T): Route => ({ body: { success: true, data, error:
 export const fail = (status: number, error: string): Route => ({ status, body: { success: false, data: null, error } })
 
 export function mockApi(routes: Record<string, Route>) {
-  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-    const route = routes[String(input)]
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const method = (init?.method ?? 'GET').toUpperCase()
+    const route = routes[`${method} ${String(input)}`] ?? routes[String(input)]
     if (route === undefined) throw new Error(`unmocked request: ${String(input)}`)
     if (route === 'network-error') throw new TypeError('Failed to fetch')
     if ('raw' in route) return new Response(route.raw, { status: route.status })

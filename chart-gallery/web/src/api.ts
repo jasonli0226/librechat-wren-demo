@@ -1,3 +1,4 @@
+import type { Headlines, Row, TileType } from './dashboard/types'
 import type { ChartDetail, ChartSummary } from './types'
 
 interface Envelope<T> {
@@ -16,11 +17,12 @@ export class ApiError extends Error {
   }
 }
 
-async function getJson<T>(path: string): Promise<T> {
+async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response
   try {
-    response = await fetch(path)
-  } catch {
+    response = await fetch(path, init)
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') throw error
     throw new ApiError('Chart gallery API is unreachable', 0)
   }
   let body: Envelope<T> | null = null
@@ -35,5 +37,30 @@ async function getJson<T>(path: string): Promise<T> {
   return body.data
 }
 
-export const fetchCharts = () => getJson<ChartSummary[]>('/api/charts')
+const getJson = <T>(path: string) => requestJson<T>(path)
+
+export interface LiveData {
+  rows: Row[]
+  columns: string[]
+  truncated: boolean
+  ran_at: string
+}
+
+export interface ArrangeTile {
+  chart_id: number
+  type: TileType
+  allowed_types: TileType[]
+}
+
+export const fetchChartData = (id: number) => getJson<LiveData>(`/api/charts/${id}/data`)
+
+export const arrangeDashboard = (tiles: ArrangeTile[], signal?: AbortSignal) =>
+  requestJson<{ spec: string; headlines: Headlines }>('/api/dashboards/arrange', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ tiles }),
+    signal,
+  })
+
+export const fetchCharts =() => getJson<ChartSummary[]>('/api/charts')
 export const fetchChart = (id: number) => getJson<ChartDetail>(`/api/charts/${id}`)
