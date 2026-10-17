@@ -54,15 +54,23 @@ function truncateTexts(elements: Record<string, unknown>): Record<string, unknow
   return out
 }
 
-function checkElement(key: string, el: unknown): string | null {
+/** Shape checks that must pass before validateSpec, which dereferences elements unguarded. */
+function checkShape(key: string, el: unknown): string | null {
   if (!isObject(el) || typeof el.type !== 'string') return `element ${key} is malformed`
+  const { children } = el
+  if (children !== undefined && !(Array.isArray(children) && children.every((c) => typeof c === 'string'))) {
+    return `element ${key} has invalid children`
+  }
+  return null
+}
+
+function checkElement(key: string, el: Element): string | null {
   const forbidden = FORBIDDEN_ELEMENT_KEYS.find((k) => k in el)
   if (forbidden) return `element ${key} uses ${forbidden}`
   const component = COMPONENTS[el.type]
   if (!component) return `element ${key} has unknown type ${el.type}`
   if (hasExpression(el.props)) return `element ${key} uses an expression in props`
   if (!component.props.safeParse(el.props).success) return `element ${key} has invalid props`
-  if (el.children !== undefined && !Array.isArray(el.children)) return `element ${key} has invalid children`
   return null
 }
 
@@ -96,10 +104,24 @@ function checkLayout(spec: Spec, plans: readonly TilePlan[]): string | null {
   return null
 }
 
+/** Never throws: any unexpected exception from malformed model output becomes a rejection. */
 export function validateArrangement(text: string, plans: readonly TilePlan[], headlines: Headlines): ArrangeResult {
+  try {
+    return arrange(text, plans, headlines)
+  } catch {
+    return fail('invalid spec')
+  }
+}
+
+function arrange(text: string, plans: readonly TilePlan[], headlines: Headlines): ArrangeResult {
   const compiled = compile(text)
   if (!compiled || typeof compiled.root !== 'string' || !isObject(compiled.elements)) return fail('no spec in response')
   if ('state' in compiled) return fail('spec uses state')
+
+  for (const [key, el] of Object.entries(compiled.elements)) {
+    const problem = checkShape(key, el)
+    if (problem) return fail(problem)
+  }
 
   const spec = { root: compiled.root, elements: truncateTexts(compiled.elements) } as Spec
   const structure = validateSpec(spec)
@@ -119,26 +141,28 @@ export function validateArrangement(text: string, plans: readonly TilePlan[], he
   return { ok: true, spec: { ...spec, elements: { ...spec.elements, [spec.root]: dropped } }, summaryDropped: true }
 }
 
-const NUMBER = /[-+]?\$?\d[\d,]*(?:\.\d+)?\s*(?:%|(?:thousand|million|billion|k|m|b)(?![a-z]))?/gi
+const NUMBER = /(?:(?<![\w])[-+])?\$?\d[\d,]*(?:\.\d+)?\s*(?:%|(?:thousand|million|billion|k|m|b)(?![a-z]))?/gi
 const MULTIPLIER: Record<string, number> = { '': 1, '%': 1, k: 1e3, thousand: 1e3, m: 1e6, million: 1e6, b: 1e9, billion: 1e9 }
 const YEAR_MIN = 1900
 const YEAR_MAX = 2100
 /** Absorbs float error in value × multiplier at the tolerance boundary. */
 const EPSILON = 1e-9
 
-/** True when every number in the summary is a headline value (to its stated precision), a year, or a count. */
+/** True when every number in the summary is (by absolute value) a headline value (to its stated precision), a year, or a count. */
 export function summaryNumbersMatch(
   summary: string,
   headlines: Headlines,
   counts: { tiles: number; sections: number },
 ): boolean {
-  const values = Object.values(headlines).flatMap((h) => Object.values(h).filter((v): v is number => typeof v === 'number'))
+  const values = Object.values(headlines).flatMap((h) =>
+    Object.values(h).flatMap((v) => (typeof v === 'number' ? [Math.abs(v)] : [])),
+  )
   for (const [match] of summary.matchAll(NUMBER)) {
-    const parsed = /^([-+]?)\$?([\d,]+(?:\.(\d+))?)\s*(.*)$/i.exec(match)
+    const parsed = /^[-+]?\$?([\d,]+(?:\.(\d+))?)\s*(.*)$/i.exec(match)
     if (!parsed) return false
-    const [, sign, digits, decimals = '', suffix] = parsed
+    const [, digits, decimals = '', suffix] = parsed
     const multiplier = MULTIPLIER[suffix.toLowerCase()] ?? 1
-    const raw = Number(`${sign}${digits.replace(/,/g, '')}`)
+    const raw = Number(digits.replace(/,/g, ''))
     const value = raw * multiplier
     const isPlainInteger = decimals === '' && suffix === ''
     if (isPlainInteger && ((raw >= YEAR_MIN && raw <= YEAR_MAX) || raw === counts.tiles || raw === counts.sections)) continue

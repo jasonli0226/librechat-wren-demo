@@ -116,6 +116,13 @@ describe('validateArrangement', () => {
     expect(validate(withElement(twoSections(), tileKey(2), tile('PieTile', 2))).ok).toBe(false)
   })
 
+  it('rejects a null element and non-array children without throwing', () => {
+    const nullLine = JSON.stringify({ op: 'add', path: '/elements/x', value: null })
+    expect(validateArrangement(`${toJsonl(twoSections())}\n${nullLine}`, PLANS, HEADLINES).ok).toBe(false)
+    const badChildren = { ...tile('BarTile', 2), children: 5 } as unknown as Element
+    expect(validate(withElement(twoSections(), tileKey(2), badChildren)).ok).toBe(false)
+  })
+
   it('rejects unparseable text', () => {
     expect(validateArrangement('not json', PLANS, HEADLINES).ok).toBe(false)
   })
@@ -140,8 +147,14 @@ describe('summaryNumbersMatch', () => {
     expect(summaryNumbersMatch('$9M', h({ value: 8_212_000 }), counts)).toBe(false)
   })
 
+  it('matches by absolute value', () => {
+    expect(summaryNumbersMatch('down 12%', h({ pct_change: -12 }), counts)).toBe(true)
+    expect(summaryNumbersMatch('-12%', h({ pct_change: 12 }), counts)).toBe(true)
+  })
+
   it('allows years and the tile and section counts only', () => {
     expect(summaryNumbersMatch('in 2025', h({}), counts)).toBe(true)
+    expect(summaryNumbersMatch('from 2024-2025', h({}), counts)).toBe(true)
     expect(summaryNumbersMatch('6 charts', h({}), counts)).toBe(true)
     expect(summaryNumbersMatch('2 sections', h({}), counts)).toBe(true)
     expect(summaryNumbersMatch('3 charts', h({}), counts)).toBe(false)
