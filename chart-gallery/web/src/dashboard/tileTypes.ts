@@ -1,7 +1,7 @@
+import { isLineShaped, isNumeric } from '../chartShape'
 import type { ChartDetail } from '../types'
 import type { Row, TilePlan, TileType } from './types'
 
-const DATE_LIKE = /^\d{4}-\d{2}(-\d{2})?([T ]\d{2}:\d{2}.*)?$/
 const MIN_LINE_ROWS = 2
 const MAX_STACKED_ROWS = 7
 const MAX_BAR_ROWS = 20
@@ -9,19 +9,7 @@ const MAX_SCALE_RATIO = 100
 
 type ChartShape = Pick<ChartDetail, 'chart_type' | 'x_field' | 'y_fields'>
 
-export function isNumeric(v: unknown): v is number {
-  return typeof v === 'number' && Number.isFinite(v)
-}
-
-function isLineShaped(chart: ChartShape, rows: readonly Row[]): boolean {
-  return (
-    rows.length >= MIN_LINE_ROWS &&
-    rows.every((r) => {
-      const x = r[chart.x_field]
-      return typeof x === 'string' && DATE_LIKE.test(x)
-    })
-  )
-}
+export { isNumeric }
 
 // Max absolute numeric value per y field; null when a field has no numeric values.
 function yScalesWithin(chart: ChartShape, rows: readonly Row[]): boolean {

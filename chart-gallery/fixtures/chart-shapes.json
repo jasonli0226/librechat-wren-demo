@@ -1,0 +1,567 @@
+[
+  {
+    "name": "three date strings",
+    "chart": {
+      "x_field": "x",
+      "y_fields": [
+        "a"
+      ]
+    },
+    "rows": [
+      {
+        "x": "2024-01-01",
+        "a": 1
+      },
+      {
+        "x": "2024-01-02",
+        "a": 2
+      },
+      {
+        "x": "2024-01-03",
+        "a": 3
+      }
+    ],
+    "line_shaped": true,
+    "scatter": null
+  },
+  {
+    "name": "integer years 2019-2024",
+    "chart": {
+      "x_field": "x",
+      "y_fields": [
+        "a"
+      ]
+    },
+    "rows": [
+      {
+        "x": 2019,
+        "a": 1
+      },
+      {
+        "x": 2020,
+        "a": 2
+      },
+      {
+        "x": 2021,
+        "a": 3
+      },
+      {
+        "x": 2022,
+        "a": 4
+      },
+      {
+        "x": 2023,
+        "a": 5
+      },
+      {
+        "x": 2024,
+        "a": 6
+      }
+    ],
+    "line_shaped": true,
+    "scatter": null
+  },
+  {
+    "name": "years with one value 1899",
+    "chart": {
+      "x_field": "x",
+      "y_fields": [
+        "a"
+      ]
+    },
+    "rows": [
+      {
+        "x": 1899,
+        "a": 1
+      },
+      {
+        "x": 2020,
+        "a": 2
+      },
+      {
+        "x": 2021,
+        "a": 3
+      },
+      {
+        "x": 2022,
+        "a": 4
+      },
+      {
+        "x": 2023,
+        "a": 5
+      }
+    ],
+    "line_shaped": false,
+    "scatter": {
+      "mode": "x",
+      "x": "x",
+      "ys": [
+        "a"
+      ]
+    }
+  },
+  {
+    "name": "2020.5 among years",
+    "chart": {
+      "x_field": "x",
+      "y_fields": [
+        "a"
+      ]
+    },
+    "rows": [
+      {
+        "x": 2019,
+        "a": 1
+      },
+      {
+        "x": 2020,
+        "a": 2
+      },
+      {
+        "x": 2020.5,
+        "a": 3
+      },
+      {
+        "x": 2022,
+        "a": 4
+      },
+      {
+        "x": 2023,
+        "a": 5
+      }
+    ],
+    "line_shaped": false,
+    "scatter": {
+      "mode": "x",
+      "x": "x",
+      "ys": [
+        "a"
+      ]
+    }
+  },
+  {
+    "name": "integral float years",
+    "chart": {
+      "x_field": "x",
+      "y_fields": [
+        "a"
+      ]
+    },
+    "rows": [
+      {
+        "x": 2019.0,
+        "a": 1
+      },
+      {
+        "x": 2020.0,
+        "a": 2
+      }
+    ],
+    "line_shaped": true,
+    "scatter": null
+  },
+  {
+    "name": "single date row is not line",
+    "chart": {
+      "x_field": "x",
+      "y_fields": [
+        "a"
+      ]
+    },
+    "rows": [
+      {
+        "x": "2024-01-01",
+        "a": 1
+      }
+    ],
+    "line_shaped": false,
+    "scatter": null
+  },
+  {
+    "name": "numeric x, 5 rows, 1 y",
+    "chart": {
+      "x_field": "x",
+      "y_fields": [
+        "a"
+      ]
+    },
+    "rows": [
+      {
+        "x": 1,
+        "a": 2
+      },
+      {
+        "x": 2,
+        "a": 4
+      },
+      {
+        "x": 3,
+        "a": 6
+      },
+      {
+        "x": 4,
+        "a": 8
+      },
+      {
+        "x": 5,
+        "a": 10
+      }
+    ],
+    "line_shaped": false,
+    "scatter": {
+      "mode": "x",
+      "x": "x",
+      "ys": [
+        "a"
+      ]
+    }
+  },
+  {
+    "name": "numeric x, 4 rows",
+    "chart": {
+      "x_field": "x",
+      "y_fields": [
+        "a"
+      ]
+    },
+    "rows": [
+      {
+        "x": 1,
+        "a": 2
+      },
+      {
+        "x": 2,
+        "a": 4
+      },
+      {
+        "x": 3,
+        "a": 6
+      },
+      {
+        "x": 4,
+        "a": 8
+      }
+    ],
+    "line_shaped": false,
+    "scatter": null
+  },
+  {
+    "name": "numeric x, 5 rows, y all null",
+    "chart": {
+      "x_field": "x",
+      "y_fields": [
+        "a"
+      ]
+    },
+    "rows": [
+      {
+        "x": 1,
+        "a": null
+      },
+      {
+        "x": 2,
+        "a": null
+      },
+      {
+        "x": 3,
+        "a": null
+      },
+      {
+        "x": 4,
+        "a": null
+      },
+      {
+        "x": 5,
+        "a": null
+      }
+    ],
+    "line_shaped": false,
+    "scatter": null
+  },
+  {
+    "name": "numeric x, one y field all null",
+    "chart": {
+      "x_field": "x",
+      "y_fields": [
+        "a",
+        "b"
+      ]
+    },
+    "rows": [
+      {
+        "x": 1,
+        "a": null,
+        "b": 1
+      },
+      {
+        "x": 2,
+        "a": null,
+        "b": 2
+      },
+      {
+        "x": 3,
+        "a": null,
+        "b": 3
+      },
+      {
+        "x": 4,
+        "a": null,
+        "b": 4
+      },
+      {
+        "x": 5,
+        "a": null,
+        "b": 5
+      }
+    ],
+    "line_shaped": false,
+    "scatter": {
+      "mode": "x",
+      "x": "x",
+      "ys": [
+        "b"
+      ]
+    }
+  },
+  {
+    "name": "text x, 2 numeric y, 5 rows",
+    "chart": {
+      "x_field": "x",
+      "y_fields": [
+        "a",
+        "b"
+      ]
+    },
+    "rows": [
+      {
+        "x": "p",
+        "a": 1,
+        "b": 5
+      },
+      {
+        "x": "q",
+        "a": 2,
+        "b": 4
+      },
+      {
+        "x": "r",
+        "a": 3,
+        "b": 3
+      },
+      {
+        "x": "s",
+        "a": 4,
+        "b": 2
+      },
+      {
+        "x": "t",
+        "a": 5,
+        "b": 1
+      }
+    ],
+    "line_shaped": false,
+    "scatter": {
+      "mode": "pair",
+      "x": "a",
+      "ys": [
+        "b"
+      ],
+      "label": "x"
+    }
+  },
+  {
+    "name": "text x, 1 y, 5 rows",
+    "chart": {
+      "x_field": "x",
+      "y_fields": [
+        "a"
+      ]
+    },
+    "rows": [
+      {
+        "x": "p",
+        "a": 1
+      },
+      {
+        "x": "q",
+        "a": 2
+      },
+      {
+        "x": "r",
+        "a": 3
+      },
+      {
+        "x": "s",
+        "a": 4
+      },
+      {
+        "x": "t",
+        "a": 5
+      }
+    ],
+    "line_shaped": false,
+    "scatter": null
+  },
+  {
+    "name": "date x, 2 y, 6 rows",
+    "chart": {
+      "x_field": "x",
+      "y_fields": [
+        "a",
+        "b"
+      ]
+    },
+    "rows": [
+      {
+        "x": "2024-01",
+        "a": 1,
+        "b": 6
+      },
+      {
+        "x": "2024-02",
+        "a": 2,
+        "b": 5
+      },
+      {
+        "x": "2024-03",
+        "a": 3,
+        "b": 4
+      },
+      {
+        "x": "2024-04",
+        "a": 4,
+        "b": 3
+      },
+      {
+        "x": "2024-05",
+        "a": 5,
+        "b": 2
+      },
+      {
+        "x": "2024-06",
+        "a": 6,
+        "b": 1
+      }
+    ],
+    "line_shaped": true,
+    "scatter": null
+  },
+  {
+    "name": "one string among numeric x, 2 y, 5 rows",
+    "chart": {
+      "x_field": "x",
+      "y_fields": [
+        "a",
+        "b"
+      ]
+    },
+    "rows": [
+      {
+        "x": 1,
+        "a": 1,
+        "b": 5
+      },
+      {
+        "x": 2,
+        "a": 2,
+        "b": 4
+      },
+      {
+        "x": "three",
+        "a": 3,
+        "b": 3
+      },
+      {
+        "x": 4,
+        "a": 4,
+        "b": 2
+      },
+      {
+        "x": 5,
+        "a": 5,
+        "b": 1
+      }
+    ],
+    "line_shaped": false,
+    "scatter": {
+      "mode": "pair",
+      "x": "a",
+      "ys": [
+        "b"
+      ],
+      "label": "x"
+    }
+  },
+  {
+    "name": "true as an x value",
+    "chart": {
+      "x_field": "x",
+      "y_fields": [
+        "a"
+      ]
+    },
+    "rows": [
+      {
+        "x": 1,
+        "a": 1
+      },
+      {
+        "x": 2,
+        "a": 2
+      },
+      {
+        "x": true,
+        "a": 3
+      },
+      {
+        "x": 4,
+        "a": 4
+      },
+      {
+        "x": 5,
+        "a": 5
+      }
+    ],
+    "line_shaped": false,
+    "scatter": null
+  },
+  {
+    "name": "text x, second y all null",
+    "chart": {
+      "x_field": "x",
+      "y_fields": [
+        "a",
+        "b"
+      ]
+    },
+    "rows": [
+      {
+        "x": "p",
+        "a": 1,
+        "b": null
+      },
+      {
+        "x": "q",
+        "a": 2,
+        "b": null
+      },
+      {
+        "x": "r",
+        "a": 3,
+        "b": null
+      },
+      {
+        "x": "s",
+        "a": 4,
+        "b": null
+      },
+      {
+        "x": "t",
+        "a": 5,
+        "b": null
+      }
+    ],
+    "line_shaped": false,
+    "scatter": null
+  }
+]
