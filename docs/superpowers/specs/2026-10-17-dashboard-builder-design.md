@@ -119,7 +119,7 @@ starting point, not a contract. That is why the user can change them.
 
 Replace the substring-only filter with `useSemantic(query)` ranking, keeping `filterCharts` as the
 instant answer until the worker has a result for the current query (`resultQuery === query`).
-Only results with score ≥ `min` are shown when a `min` param is present; otherwise show the ranked
+Only results with `confidence` ≥ `min` are shown when a `min` param is present; otherwise show the ranked
 list. Exact matching rules for ties and empty queries are the builder's call.
 
 ### 4. Live data endpoint
@@ -197,11 +197,11 @@ dashboard route (lazy import) so the list and detail pages do not pay for it.
 |---|---|---|
 | `Dashboard` | `summary: string` (≤ 200 chars) | `Section`s |
 | `Section` | `title: string` (≤ 60 chars) | tiles |
+| `StatTile`, `LineTile`, `BarTile`, `StackedBarTile`, `TableTile` | `chartId: number`, `width: "quarter" \| "half" \| "full"` | none (`children: []`) |
 
 Length caps on `summary` and `title` are **truncated** (with an ellipsis) before validation, not
 rejected, so an over-long string does not throw away the whole layout. Structure, type and
 chart-id violations are still hard failures.
-| `StatTile`, `LineTile`, `BarTile`, `StackedBarTile`, `TableTile` | `chartId: number`, `width: "quarter" \| "half" \| "full"` | none (`children: []`) |
 
 Every element carries `children` (json-render requires the key, even when empty). No `state`,
 `on`, `watch`, `repeat` or actions: the dashboard has no interactivity in the spec and no data.
@@ -232,16 +232,17 @@ yields the same compact prompt.)
 **Endpoint.** `POST /api/dashboards/arrange`, body validated with pydantic:
 
 ```json
-{ "tiles": [ { "chart_id": 12, "type": "bar", "allowed_types": ["bar", "table"],
-               "headline": { "top": "Store 3", "top_value": 1823000, "rows": 4 } } ] }
+{ "tiles": [ { "chart_id": 12, "type": "bar", "allowed_types": ["bar", "table"] } ] }
 ```
 
-- 1–12 tiles, unique chart ids that exist; `headline` small and size-capped (builder's call on
-  exact limits). Titles, descriptions and tables are loaded **from the database by id**, not taken
-  from the request.
+- 1–12 tiles, unique chart ids that exist. Titles, descriptions, tables **and headline values**
+  are computed server-side from the database row for each id (snapshot rows), not taken from the
+  request, so the request carries no free text the model would read.
 - The server calls OpenRouter's OpenAI-compatible chat completions with `OPENROUTER_KEY`, model
   `GALLERY_LLM_MODEL`, low temperature, a server-side timeout (~8 s) and a max-token cap.
-- Response: the model's raw JSONL text in the success envelope (one-shot, not streamed — the
+- Response: `{ "spec": "<the model's raw JSONL text>", "headlines": { "<chart_id>": {…} } }` in
+  the success envelope, so the browser can run the summary check against exactly the values the
+  model saw (one-shot, not streamed — the
   page validates the whole spec before animating once, so streaming would not show sooner).
 - Missing `OPENROUTER_KEY` → the endpoint returns a clear "AI arrangement disabled" error and the
   page stays on the rules layout. The gallery must still start without the key.
@@ -263,7 +264,7 @@ yields the same compact prompt.)
    sent, tolerant of formatting (`1823000` ≈ "$1.8M" ≈ "1.82 million": compare after parsing
    suffixes, within the rounding the text shows). Years and small counts that equal a tile count
    are allowed. If a number does not match, **drop only the summary** and keep the sections.
-   Derived numbers ("revenue grew 12%") would not match a raw value, so the server-side headline
+   Derived numbers ("revenue grew 12%") would not match a raw value, so the server-computed headline
    includes the derived values a summary is likely to cite — for line tiles the first value, last
    value and percent change; for bars the top item's share of the total — and the prompt says to
    cite only numbers from the headline. Expect occasional over-drops anyway; this is visible in
