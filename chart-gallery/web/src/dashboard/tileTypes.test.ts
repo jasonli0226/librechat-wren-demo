@@ -97,10 +97,28 @@ describe('fittingTypes', () => {
     expect(fittingTypes(shape('bar'), rows)).toEqual(['table'])
   })
 
+  const numericX = (n: number): Row[] => Array.from({ length: n }, (_, i) => ({ k: i * 1.5, v: i + 1 }))
+
+  it('saved scatter with numeric x lists scatter first', () => {
+    expect(fittingTypes(shape('scatter'), numericX(6))[0]).toBe('scatter')
+  })
+
+  it('bar with two numeric y over 25 text rows allows scatter but not bar', () => {
+    const rows = Array.from({ length: 25 }, (_, i) => ({ k: `c${i}`, a: i, b: i * 2 }))
+    expect(fittingTypes(shape('bar', 'k', ['a', 'b']), rows)).toEqual(['scatter', 'table'])
+  })
+
+  it('integer-year x is a line, not a bar', () => {
+    const rows = Array.from({ length: 6 }, (_, i) => ({ k: 2019 + i, v: i }))
+    expect(fittingTypes(shape('bar'), rows)).toEqual(['line', 'table'])
+  })
+
   it('zero rows fit only table', () => {
     expect(fittingTypes(shape('bar'), [])).toEqual(['table'])
   })
 })
+
+const numericPlanRows = (n: number): Row[] => Array.from({ length: n }, (_, i) => ({ k: i * 1.5, v: i + 1 }))
 
 describe('planTiles', () => {
   it('switches the second of two bars to a table', () => {
@@ -119,6 +137,24 @@ describe('planTiles', () => {
       { chart: detail(2, categories(30)), confidence: null },
     ])
     expect(plans.map((p) => p.type)).toEqual(['table', 'table'])
+  })
+
+  it('swaps the second of two scatter-first plans to a bar when bar is allowed', () => {
+    const rows = numericPlanRows(6)
+    const plans = planTiles([
+      { chart: detail(1, rows, 'scatter'), confidence: null },
+      { chart: detail(2, rows, 'scatter'), confidence: null },
+    ])
+    expect(plans.map((p) => p.type)).toEqual(['scatter', 'bar'])
+  })
+
+  it('keeps two scatters when bar is not allowed', () => {
+    const rows = Array.from({ length: 25 }, (_, i) => ({ k: i * 1.5, v: i + 1 }))
+    const plans = planTiles([
+      { chart: detail(1, rows, 'scatter'), confidence: null },
+      { chart: detail(2, rows, 'scatter'), confidence: null },
+    ])
+    expect(plans.map((p) => p.type)).toEqual(['scatter', 'scatter'])
   })
 
   it('does not mutate its input', () => {

@@ -40,4 +40,16 @@ describe('ChartView', () => {
     })
     expect(container.querySelectorAll('.recharts-pie-sector')).toHaveLength(3)
   })
+
+  it('renders a scatter chart for numeric x', () => {
+    const rows = Array.from({ length: 6 }, (_, i) => ({ x: i * 1.5, y: i + 1 }))
+    const { container } = draw({ chart_type: 'scatter', x_field: 'x', y_fields: ['y'], rows })
+    expect(container.querySelector('.recharts-scatter')).not.toBeNull()
+  })
+
+  it('falls back to a table when scatter has a text x and one y', () => {
+    const rows = Array.from({ length: 6 }, (_, i) => ({ x: `c${i}`, y: i + 1 }))
+    draw({ chart_type: 'scatter', x_field: 'x', y_fields: ['y'], rows })
+    expect(screen.getByRole('table')).toBeInTheDocument()
+  })
 })

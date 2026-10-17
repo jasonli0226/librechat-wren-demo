@@ -1,4 +1,4 @@
-import { isLineShaped, isNumeric } from '../chartShape'
+import { isLineShaped, isNumeric, scatterAxes } from '../chartShape'
 import type { ChartDetail } from '../types'
 import type { Row, TilePlan, TileType } from './types'
 
@@ -29,19 +29,23 @@ export function fittingTypes(chart: ChartShape, rows: readonly Row[]): TileType[
   const single = chart.y_fields.length === 1
   const hasNumbers = rows.some((r) => chart.y_fields.some((f) => isNumeric(r[f])))
   const line = hasNumbers && isLineShaped(chart, rows)
+  const scatter = hasNumbers && scatterAxes(chart, rows) !== null
+  const savedScatter = chart.chart_type === 'scatter'
   const types: TileType[] = []
 
   if (n === 1 && single && isNumeric(rows[0][chart.y_fields[0]])) types.push('stat')
   if (line) types.push('line')
+  if (scatter && savedScatter) types.push('scatter')
   if (!line && n >= MIN_LINE_ROWS && n <= MAX_STACKED_ROWS && single && chart.chart_type === 'pie' && hasNumbers) {
     types.push('stackedBar')
   }
   if (!line && n >= 1 && n <= MAX_BAR_ROWS && yScalesWithin(chart, rows)) types.push('bar')
+  if (scatter && !savedScatter) types.push('scatter')
   types.push('table')
   return types
 }
 
-const SWAP: Partial<Record<TileType, TileType>> = { bar: 'table', table: 'bar' }
+const SWAP: Partial<Record<TileType, TileType>> = { bar: 'table', table: 'bar', scatter: 'bar' }
 
 function applyVariety(plans: readonly TilePlan[]): TilePlan[] {
   const out: TilePlan[] = []

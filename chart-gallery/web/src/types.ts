@@ -1,4 +1,4 @@
-export type ChartType = 'line' | 'bar' | 'pie'
+export type ChartType = 'line' | 'bar' | 'pie' | 'scatter'
 
 export interface ChartSummary {
   readonly id: number

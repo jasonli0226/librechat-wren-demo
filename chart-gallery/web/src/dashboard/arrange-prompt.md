@@ -9,7 +9,7 @@ Components:
 - Dashboard: props {summary}; children are Sections. Exactly one, the root.
 - Section: props {title}; children are tiles. Title at most 60 characters.
 - Tiles: props {chartId, width}; no children. chartId is the integer chart_id. width is "quarter", "half" or "full".
-  stat -> StatTile, line -> LineTile, bar -> BarTile, stackedBar -> StackedBarTile, table -> TableTile.
+  stat -> StatTile, line -> LineTile, bar -> BarTile, scatter -> ScatterTile, stackedBar -> StackedBarTile, table -> TableTile.
 
 Example for charts 3 (type stat) and 7 (type line):
 {"op":"add","path":"/root","value":"dash"}

@@ -35,7 +35,7 @@ describe('catalog', () => {
   })
 
   it('TILE_COMPONENT maps every tile type to a catalog component', () => {
-    expect(Object.keys(TILE_COMPONENT).sort()).toEqual(['bar', 'line', 'stackedBar', 'stat', 'table'])
+    expect(Object.keys(TILE_COMPONENT).sort()).toEqual(['bar', 'line', 'scatter', 'stackedBar', 'stat', 'table'])
     for (const name of Object.values(TILE_COMPONENT)) expect(components).toHaveProperty(name)
   })
 })

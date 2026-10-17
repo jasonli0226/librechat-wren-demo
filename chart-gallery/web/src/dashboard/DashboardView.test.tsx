@@ -136,4 +136,18 @@ describe('DashboardView', () => {
     expect(tileOf('Chart 1').style.gridColumn).toBe('span 3')
     expect(tileOf('Chart 9').style.gridColumn).toBe('span 12')
   })
+
+  it('draws a pair-mode scatter tile, and shows a table when live rows stop fitting', () => {
+    const pairRows: Row[] = Array.from({ length: 6 }, (_, i) => ({ store: `s${i}`, revenue: i + 1, orders: i * 2 }))
+    const scatter = plan(1, 'scatter', pairRows)
+    scatter.chart = { ...scatter.chart, y_fields: ['revenue', 'orders'] }
+    const { unmount } = draw([scatter], allLive([scatter]))
+    expect(tileOf('Chart 1').querySelector('.recharts-scatter')).not.toBeNull()
+    unmount()
+
+    const fewRows = pairRows.slice(0, 2)
+    draw([scatter], new Map<number, TileData>([[1, { status: 'live', rows: fewRows }]]))
+    expect(within(tileOf('Chart 1')).getByRole('table')).toBeInTheDocument()
+    expect(tileOf('Chart 1').querySelector('.recharts-scatter')).toBeNull()
+  })
 })

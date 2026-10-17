@@ -1,6 +1,6 @@
 import type { ChartDetail } from '../types'
 
-export type TileType = 'stat' | 'line' | 'bar' | 'stackedBar' | 'table'
+export type TileType = 'stat' | 'line' | 'bar' | 'stackedBar' | 'scatter' | 'table'
 export type TileWidth = 'quarter' | 'half' | 'full'
 
 export interface TilePlan {

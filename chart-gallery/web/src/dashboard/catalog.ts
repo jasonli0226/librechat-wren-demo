@@ -28,6 +28,7 @@ export const catalog = defineCatalog(schema, {
     StatTile: tile('Single headline number for a chart'),
     LineTile: tile('Line chart'),
     BarTile: tile('Bar chart'),
+    ScatterTile: tile('Scatter chart'),
     StackedBarTile: tile('Stacked bar chart'),
     TableTile: tile('Data table'),
   },
@@ -38,6 +39,7 @@ export const TILE_COMPONENT: Record<TileType, string> = {
   stat: 'StatTile',
   line: 'LineTile',
   bar: 'BarTile',
+  scatter: 'ScatterTile',
   stackedBar: 'StackedBarTile',
   table: 'TableTile',
 }

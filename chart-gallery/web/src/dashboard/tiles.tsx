@@ -56,6 +56,10 @@ function BarBody({ plan, rows }: BodyProps) {
   return <ChartView chart={{ ...plan.chart, chart_type: 'bar', rows: sorted }} height={CHART_HEIGHT} horizontal />
 }
 
+function ScatterBody({ plan, rows }: BodyProps) {
+  return <ChartView chart={{ ...plan.chart, chart_type: 'scatter', rows }} height={CHART_HEIGHT} />
+}
+
 function TableBody({ plan, rows }: BodyProps) {
   return <DataTable chart={{ ...plan.chart, rows: sortByFieldDesc(rows, plan.chart.y_fields[0]) }} />
 }
@@ -86,6 +90,7 @@ const BODY: Record<TileType, (props: BodyProps) => ReactNode> = {
   stat: StatBody,
   line: LineBody,
   bar: BarBody,
+  scatter: ScatterBody,
   stackedBar: StackedBarBody,
   table: TableBody,
 }
@@ -129,5 +134,6 @@ function Tile({ chartId, width, type }: TileProps & { readonly type: TileType })
 export const StatTile = (props: TileProps) => <Tile {...props} type="stat" />
 export const LineTile = (props: TileProps) => <Tile {...props} type="line" />
 export const BarTile = (props: TileProps) => <Tile {...props} type="bar" />
+export const ScatterTile = (props: TileProps) => <Tile {...props} type="scatter" />
 export const StackedBarTile = (props: TileProps) => <Tile {...props} type="stackedBar" />
 export const TableTile = (props: TileProps) => <Tile {...props} type="table" />
