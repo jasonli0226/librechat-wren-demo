@@ -95,7 +95,8 @@ def test_non_numeric_y_is_rejected_with_cast_hint(bad):
     assert "cast it to numeric in SQL" in error
 
 
-SCATTER_ROWS = [{"price": 1.5, "units": 3}]
+# The gallery draws a scatter only with at least 5 rows (MIN_SCATTER_ROWS), so fixtures use 5.
+SCATTER_ROWS = [{"price": p, "units": u} for p, u in ((1.5, 3), (2.0, 4), (2.5, 6), (3.0, 7), (3.5, 9))]
 
 
 def scatter_call(rows, post=None):
@@ -124,7 +125,7 @@ def test_scatter_rejects_non_numeric_x(bad):
     def post(payload):
         raise AssertionError("must not post")
 
-    result = scatter_call([{"price": bad, "units": 3}], post=post)
+    result = scatter_call([*SCATTER_ROWS[:-1], {"price": bad, "units": 3}], post=post)
     assert result["saved"] is False
     assert f"x field 'price' has a non-numeric value {bad!r}; cast it to numeric in SQL" in result["error"]
 
@@ -133,7 +134,7 @@ def test_scatter_rejects_null_x():
     def post(payload):
         raise AssertionError("must not post")
 
-    result = scatter_call([{"price": None, "units": 3}], post=post)
+    result = scatter_call([*SCATTER_ROWS[:-1], {"price": None, "units": 3}], post=post)
     assert result["saved"] is False
     assert "x field 'price' has a non-numeric value None; cast it to numeric in SQL" in result["error"]
 
@@ -185,6 +186,19 @@ def test_poster_raises_on_error_envelope():
 
     with pytest.raises(GalleryError, match="HTTP 401: invalid or missing token"):
         poster(handler)({})
+
+
+def test_gallery_shape_rejection_reaches_the_analyst():
+    error = (
+        "body: Value error, scatter charts need at least 5 rows with a numeric, non-year x column; "
+        "use a line chart for years"
+    )
+
+    def handler(request):
+        return httpx.Response(422, json={"success": False, "data": None, "error": error})
+
+    result = scatter_call(SCATTER_ROWS[:3], post=poster(handler))
+    assert result == {"saved": False, "error": f"chart gallery rejected or unreachable: HTTP 422: {error}"}
 
 
 def test_poster_raises_on_non_json():

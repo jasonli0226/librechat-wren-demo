@@ -133,7 +133,8 @@ def register_save_chart(server: Any, query: QueryFn, post: PostFn) -> None:
         - title: short name of the chart, under 80 characters
         - description: one or two sentences on what the chart shows
         - chart_type: "line", "bar", "pie" or "scatter"
-        - x_field: result column for the x axis (pie: slice label; scatter: numeric column)
+        - x_field: result column for the x axis (pie: slice label; scatter: numeric,
+          non-year column; scatter needs at least 5 rows, use a line chart for years)
         - y_fields: result column(s) to plot, 1-5 numeric columns (pie: exactly one)
 
         Returns {"saved": true, "url": ...} — put the url in your answer — or

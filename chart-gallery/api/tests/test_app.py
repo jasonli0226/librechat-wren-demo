@@ -61,8 +61,27 @@ def test_restyled_sql_updates_same_chart(client):
     assert response.json()["data"] == {"id": 1, "url": "http://gallery.test/charts/1", "status": "updated"}
 
 
+def scatter(rows):
+    return {"chart_type": "scatter", "x_field": "price", "y_fields": ["units"], "rows": rows}
+
+
 def test_scatter_chart_is_saved(client):
-    assert save(client, chart_type="scatter").status_code == 200
+    rows = [{"price": p, "units": p * 3} for p in (1.5, 2.0, 2.5, 3.0, 3.5)]
+    assert save(client, **scatter(rows)).status_code == 200
+
+
+def test_scatter_with_too_few_rows_is_rejected(client):
+    rows = [{"price": p, "units": p * 3} for p in (1.5, 2.0, 2.5, 3.0)]
+    response = save(client, **scatter(rows))
+    assert response.status_code == 422
+    assert "at least 5 rows" in response.json()["error"]
+
+
+def test_scatter_with_year_x_is_rejected(client):
+    rows = [{"price": year, "units": year - 2000} for year in range(2019, 2025)]
+    response = save(client, **scatter(rows))
+    assert response.status_code == 422
+    assert "use a line chart for years" in response.json()["error"]
 
 
 def test_same_sql_as_pie_is_a_new_chart(client):
