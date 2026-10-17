@@ -24,13 +24,16 @@ interface Props {
   readonly height?: number
   /** Fixed width instead of filling the parent (used by tests). */
   readonly width?: number
+  /** Draw bar charts with horizontal bars (categories on the y axis). */
+  readonly horizontal?: boolean
 }
 
 const AXIS_TICK = { fill: 'var(--text-secondary)', fontSize: 12 }
 const TOOLTIP_STYLE = { background: 'var(--surface-1)', border: '1px solid var(--border)', color: 'var(--text-primary)' }
 
-export function ChartView({ chart, height = 320, width }: Props) {
-  const plot = renderPlot(chart, width === undefined ? {} : { width, height })
+export function ChartView({ chart, height = 320, width, horizontal = false }: Props) {
+  const size = width === undefined ? {} : { width, height }
+  const plot = horizontal && chart.chart_type === 'bar' ? renderHorizontalBars(chart, size) : renderPlot(chart, size)
   if (width !== undefined) return plot
   return (
     <ResponsiveContainer width="100%" height={height}>
@@ -83,6 +86,24 @@ function renderPlot(chart: ChartSpec, size: { width?: number; height?: number })
       {axes}
       {y_fields.map((field, i) => (
         <Bar key={field} dataKey={field} name={field} fill={seriesColor(i)} radius={[4, 4, 0, 0]} isAnimationActive={false} />
+      ))}
+    </BarChart>
+  )
+}
+
+const CATEGORY_AXIS_WIDTH = 120
+
+function renderHorizontalBars(chart: ChartSpec, size: { width?: number; height?: number }): ReactElement {
+  const { x_field, y_fields } = chart
+  return (
+    <BarChart data={chart.rows as Record<string, unknown>[]} layout="vertical" {...size}>
+      <CartesianGrid stroke="var(--border)" horizontal={false} />
+      <XAxis type="number" tick={AXIS_TICK} />
+      <YAxis type="category" dataKey={x_field} tick={AXIS_TICK} width={CATEGORY_AXIS_WIDTH} />
+      <Tooltip contentStyle={TOOLTIP_STYLE} />
+      {y_fields.length > 1 ? <Legend /> : null}
+      {y_fields.map((field, i) => (
+        <Bar key={field} dataKey={field} name={field} fill={seriesColor(i)} radius={[0, 4, 4, 0]} isAnimationActive={false} />
       ))}
     </BarChart>
   )
