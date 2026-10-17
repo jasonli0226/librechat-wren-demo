@@ -112,7 +112,7 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; }
 @keyframes dashboard-fade-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 @keyframes tile-pulse { from { opacity: 0.4; } to { opacity: 0.8; } }
 @media (max-width: 720px) {
-  /* .dashboard-hero > .tile is listed so this outranks the hero's span 8 rule on specificity. */
+  /* .dashboard-hero > .tile matches the span 8 rule's specificity, so this later rule wins by source order. */
   .tile-grid > *, .dashboard-hero > .tile { grid-column: span 12 !important; }
 }
 @media (prefers-reduced-motion: reduce) {

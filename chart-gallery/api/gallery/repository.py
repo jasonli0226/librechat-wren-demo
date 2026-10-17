@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS charts (
 
 SCATTER_TYPE = "scatter"  # the chart type whose absence from the CHECK marks an old table
 
-_UPDATABLE ="title, description, chart_type, x_field, y_fields, sql, normalized_sql, tables, rows"
+_UPDATABLE = "title, description, chart_type, x_field, y_fields, sql, normalized_sql, tables, rows"
 
 
 @dataclass(frozen=True)
