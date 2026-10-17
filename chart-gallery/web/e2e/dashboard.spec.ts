@@ -38,9 +38,11 @@ function storesSpec(tiles: RequestTile[]): string {
   return lines.map((l) => JSON.stringify(l)).join('\n')
 }
 
-const stubArrange = (page: Page) =>
+/** Answers every arrange call with storesSpec; each request's tiles are appended to `requests`. */
+const stubArrange = (page: Page, requests: RequestTile[][] = []) =>
   page.route('**/api/dashboards/arrange', async (route) => {
     const { tiles } = route.request().postDataJSON() as { tiles: RequestTile[] }
+    requests.push(tiles)
     await route.fulfill({
       json: { success: true, data: { spec: storesSpec(tiles), headlines: {} }, error: null },
     })
@@ -67,7 +69,8 @@ test('search builds a rules dashboard with snapshot tiles', async ({ page }) => 
 })
 
 test('AI arrangement puts the seed in the hero with insights and the rest in sections', async ({ page }) => {
-  await stubArrange(page)
+  const requests: RequestTile[][] = []
+  await stubArrange(page, requests)
 
   await page.goto('/dashboard?q=store')
 
@@ -75,8 +78,11 @@ test('AI arrangement puts the seed in the hero with insights and the rest in sec
   await expect(page.getByText('AI insights')).toBeVisible()
   await expect(page.getByText(INSIGHT)).toBeVisible()
   // The hero holds the first chart in the request; the other store chart is in the section.
+  const heroId = requests.at(-1)?.[0]?.chart_id
+  const heroTitle = [...ids].find(([, id]) => id === heroId)?.[0]
+  expect(heroTitle, `hero chart ${String(heroId)} is a seed`).toBeDefined()
   await expect(page.locator('.dashboard-hero .tile')).toHaveCount(1)
-  await expect(page.locator('.dashboard-hero .tile-title')).toHaveText(/ by store$/)
+  await expect(page.locator('.dashboard-hero .tile-title')).toHaveText(heroTitle!)
   await expect(page.getByText('Arranged by rules')).toHaveCount(0)
 })
 
