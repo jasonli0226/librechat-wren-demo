@@ -19,6 +19,8 @@ COPY api/pyproject.toml api/uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 COPY api/gallery ./gallery
 COPY --from=web /web/dist ./static
+COPY web/src/dashboard/arrange-prompt.md /app/prompts/arrange-prompt.md
+ENV GALLERY_PROMPT_PATH=/app/prompts/arrange-prompt.md
 RUN useradd --system --uid 10001 gallery && mkdir -p /data && chown gallery /data
 USER gallery
 EXPOSE 3090
