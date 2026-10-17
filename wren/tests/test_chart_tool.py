@@ -61,7 +61,7 @@ def test_unsupported_chart_type_is_rejected_before_running_sql():
         raise AssertionError("must not run")
 
     result = call(query=query, chart_type="area")
-    assert result == {"saved": False, "error": "save_chart supports line, bar, pie; the chart was not saved"}
+    assert result == {"saved": False, "error": "save_chart supports line, bar, pie, scatter; the chart was not saved"}
 
 
 def test_pie_needs_exactly_one_y_field():
@@ -93,6 +93,48 @@ def test_non_numeric_y_is_rejected_with_cast_hint(bad):
     error = call(query=lambda sql: result_with(rows=rows))["error"]
     assert error.startswith("y field 'revenue' has a non-numeric value")
     assert "cast it to numeric in SQL" in error
+
+
+SCATTER_ROWS = [{"price": 1.5, "units": 3}]
+
+
+def scatter_call(rows, post=None):
+    return call(
+        query=lambda sql: result_with(columns=["price", "units"], rows=rows),
+        post=post,
+        chart_type="scatter",
+        x_field="price",
+        y_fields=["units"],
+    )
+
+
+def test_scatter_saves_with_numeric_x():
+    posted = []
+
+    def post(payload):
+        posted.append(payload)
+        return SAVED
+
+    assert scatter_call(SCATTER_ROWS, post=post)["saved"] is True
+    assert posted[0]["chart_type"] == "scatter"
+
+
+@pytest.mark.parametrize("bad", ["cheap", True])
+def test_scatter_rejects_non_numeric_x(bad):
+    def post(payload):
+        raise AssertionError("must not post")
+
+    result = scatter_call([{"price": bad, "units": 3}], post=post)
+    assert result["saved"] is False
+    assert f"x field 'price' has a non-numeric value {bad!r}; cast it to numeric in SQL" in result["error"]
+
+
+def test_scatter_allows_null_x():
+    assert scatter_call([{"price": None, "units": 3}])["saved"] is True
+
+
+def test_unsupported_type_message_lists_scatter():
+    assert "line, bar, pie, scatter" in call(chart_type="area")["error"]
 
 
 def test_null_y_values_are_allowed():
