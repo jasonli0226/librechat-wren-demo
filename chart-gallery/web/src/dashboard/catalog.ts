@@ -27,7 +27,7 @@ export const catalog = defineCatalog(schema, {
       description: 'Main tile, optionally followed by Insights',
     },
     Insights: {
-      props: z.object({ bullets: z.array(z.string().max(INSIGHT_MAX)).min(1).max(MAX_BULLETS) }),
+      props: z.object({ bullets: z.array(z.string().min(1).max(INSIGHT_MAX)).min(1).max(MAX_BULLETS) }),
       description: 'Short AI bullet points citing headline numbers',
     },
     Section: {

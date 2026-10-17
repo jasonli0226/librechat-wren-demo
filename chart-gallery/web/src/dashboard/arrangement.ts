@@ -6,6 +6,7 @@ import type { Headlines, TilePlan } from './types'
 export type ArrangeResult = { ok: true; spec: Spec; bulletsDropped: number } | { ok: false; reason: string }
 
 type Element = Spec['elements'][string]
+type Counts = { tiles: number; sections: number }
 type PropsSchema = { safeParse: (v: unknown) => { success: boolean } }
 
 const COMPONENTS = catalog.data.components as Record<string, { props: PropsSchema }>
@@ -121,8 +122,18 @@ function checkLayout(spec: Spec, plans: readonly TilePlan[]): string | null {
   return null
 }
 
+/** Returns a copy with every Section title that fails the number check blanked; an empty title renders nothing. */
+function filterTitles(spec: Spec, headlines: Headlines, counts: Counts): Spec {
+  const elements: Spec['elements'] = {}
+  for (const [key, el] of Object.entries(spec.elements)) {
+    const blank = el.type === 'Section' && !summaryNumbersMatch(el.props.title as string, headlines, counts)
+    elements[key] = blank ? { ...el, props: { ...el.props, title: '' } } : el
+  }
+  return { ...spec, elements }
+}
+
 /** Keeps only bullets whose numbers all pass the number check; removes Insights when none survive. */
-function filterInsights(spec: Spec, headlines: Headlines, counts: { tiles: number; sections: number }): ArrangeResult {
+function filterInsights(spec: Spec, headlines: Headlines, counts: Counts): ArrangeResult {
   const root = spec.elements[spec.root] as Element
   const heroKey = (root.children ?? [])[0] as string
   const hero = spec.elements[heroKey] as Element
@@ -174,7 +185,8 @@ function arrange(text: string, plans: readonly TilePlan[], headlines: Headlines)
 
   // Root children are the Hero followed by Sections only, so the Hero is not counted as a section.
   const sections = (spec.elements[spec.root]?.children?.length ?? 1) - 1
-  return filterInsights(spec, headlines, { tiles: plans.length, sections })
+  const counts = { tiles: plans.length, sections }
+  return filterInsights(filterTitles(spec, headlines, counts), headlines, counts)
 }
 
 const NUMBER = /(?:(?<![\w])[-+])?\$?\d[\d,]*(?:\.\d+)?\s*(?:%|(?:thousand|million|billion|k|m|b)(?![a-z]))?/gi
@@ -183,27 +195,32 @@ const YEAR_MIN = 1900
 const YEAR_MAX = 2100
 /** Absorbs float error in value × multiplier at the tolerance boundary. */
 const EPSILON = 1e-9
+/** A stated number may differ from a headline value by at most this fraction of it, so "1" cannot stand for r = 0.62. */
+const REL_TOLERANCE = 0.05
 
-/** True when every number in the summary is (by absolute value) a headline value (to its stated precision), a year, or a count. */
-export function summaryNumbersMatch(
-  summary: string,
-  headlines: Headlines,
-  counts: { tiles: number; sections: number },
-): boolean {
-  const values = Object.values(headlines).flatMap((h) =>
-    Object.values(h).flatMap((v) => (typeof v === 'number' ? [Math.abs(v)] : [])),
-  )
+/** True when a stated (unsigned) number matches value v to its stated precision and within REL_TOLERANCE of v. */
+function matchesValue(stated: number, sign: string, tolerance: number, v: number): boolean {
+  if (sign === '-' ? v >= 0 : sign === '+' && v < 0) return false
+  const diff = Math.abs(Math.abs(v) - stated)
+  return diff <= tolerance && diff <= REL_TOLERANCE * Math.abs(v) * (1 + EPSILON)
+}
+
+/**
+ * True when every number in the summary is a headline value (to its stated precision and within REL_TOLERANCE), a year,
+ * or a count. Unsigned numbers match by absolute value ("fell 12%"); an explicit sign must agree with the value's sign.
+ */
+export function summaryNumbersMatch(summary: string, headlines: Headlines, counts: Counts): boolean {
+  const values = Object.values(headlines).flatMap((h) => Object.values(h).filter((v): v is number => typeof v === 'number'))
   for (const [match] of summary.matchAll(NUMBER)) {
-    const parsed = /^[-+]?\$?([\d,]+(?:\.(\d+))?)\s*(.*)$/i.exec(match)
+    const parsed = /^([-+]?)\$?([\d,]+(?:\.(\d+))?)\s*(.*)$/i.exec(match)
     if (!parsed) return false
-    const [, digits, decimals = '', suffix] = parsed
+    const [, sign, digits, decimals = '', suffix] = parsed
     const multiplier = MULTIPLIER[suffix.toLowerCase()] ?? 1
     const raw = Number(digits.replace(/,/g, ''))
-    const value = raw * multiplier
     const isPlainInteger = decimals === '' && suffix === ''
     if (isPlainInteger && ((raw >= YEAR_MIN && raw <= YEAR_MAX) || raw === counts.tiles || raw === counts.sections)) continue
     const tolerance = 0.5 * 10 ** -decimals.length * multiplier * (1 + EPSILON)
-    if (!values.some((v) => Math.abs(v - value) <= tolerance)) return false
+    if (!values.some((v) => matchesValue(raw * multiplier, sign, tolerance, v))) return false
   }
   return true
 }

@@ -215,6 +215,32 @@ describe('validateArrangement', () => {
     expect(result.spec.elements.insights).toBeUndefined()
   })
 
+  it('blanks a Section title with an unknown number and keeps the rest of the spec', () => {
+    const spec = withElement(heroSpec(), 's-bar', { type: 'Section', props: { title: 'Revenue up 40%' }, children: [tileKey(2)] })
+    const result = validate(spec)
+    if (!result.ok) throw new Error(result.reason)
+    expect(result.spec.elements['s-bar']).toEqual({ ...spec.elements['s-bar'], props: { title: '' } })
+    expect(result.spec).toEqual(withElement(spec, 's-bar', result.spec.elements['s-bar']!))
+    expect(result.bulletsDropped).toBe(0)
+  })
+
+  it('keeps a Section title whose numbers match', () => {
+    const spec = withElement(heroSpec(), 's-trend', { type: 'Section', props: { title: 'Trend up 12%' }, children: [tileKey(3)] })
+    expect(validate(spec)).toEqual({ ok: true, spec, bulletsDropped: 0 })
+  })
+
+  it('checks a Section title in its truncated form', () => {
+    const title = `${'y'.repeat(TITLE_MAX + 5)} 999`
+    const spec = withElement(heroSpec(), 's-bar', { type: 'Section', props: { title }, children: [tileKey(2)] })
+    const result = validate(spec)
+    if (!result.ok) throw new Error(result.reason)
+    expect(result.spec.elements['s-bar']!.props.title).toBe(`${'y'.repeat(TITLE_MAX - 1)}…`)
+  })
+
+  it('rejects an empty bullet', () => {
+    expect(validate(heroSpec(['Revenue reached $8.2M.', ''])).ok).toBe(false)
+  })
+
   it('counts sections without the hero', () => {
     const plans = [...PLANS, plan(4, 'bar')]
     const spec = withElement(
@@ -238,9 +264,29 @@ describe('summaryNumbersMatch', () => {
     expect(summaryNumbersMatch('$9M', h({ value: 8_212_000 }), counts)).toBe(false)
   })
 
-  it('matches by absolute value', () => {
+  it('matches an unsigned number by absolute value', () => {
     expect(summaryNumbersMatch('down 12%', h({ pct_change: -12 }), counts)).toBe(true)
-    expect(summaryNumbersMatch('-12%', h({ pct_change: 12 }), counts)).toBe(true)
+    expect(summaryNumbersMatch('fell 12%', h({ pct_change: -12 }), counts)).toBe(true)
+  })
+
+  it('matches an explicit minus only against a negative value', () => {
+    expect(summaryNumbersMatch('-12%', h({ pct_change: 12 }), counts)).toBe(false)
+    expect(summaryNumbersMatch('r = -0.8', h({ r: 0.8 }), counts)).toBe(false)
+    expect(summaryNumbersMatch('r = -0.8', h({ r: -0.8 }), counts)).toBe(true)
+  })
+
+  it('matches an explicit plus only against a non-negative value', () => {
+    expect(summaryNumbersMatch('+12%', h({ pct_change: -12 }), counts)).toBe(false)
+    expect(summaryNumbersMatch('+12%', h({ pct_change: 12 }), counts)).toBe(true)
+  })
+
+  it('bounds a match to 5% of the value, so small values need their real digits', () => {
+    expect(summaryNumbersMatch('a perfect correlation, r = 1', h({ r: 0.62 }), counts)).toBe(false)
+    expect(summaryNumbersMatch('r is 0', h({ r: 0.3 }), counts)).toBe(false)
+    expect(summaryNumbersMatch('r is 0', h({ r: 0 }), counts)).toBe(true)
+    expect(summaryNumbersMatch('r is 0.0', h({ r: 0.01 }), counts)).toBe(false)
+    expect(summaryNumbersMatch('1.2M', h({ value: 1_234_000 }), counts)).toBe(true)
+    expect(summaryNumbersMatch('$8.2M', h({ value: 8_212_000 }), counts)).toBe(true)
   })
 
   it('allows years and the tile and section counts only', () => {
