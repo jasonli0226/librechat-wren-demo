@@ -274,6 +274,6 @@ describe('DashboardPage', () => {
     await vi.waitFor(() => expect(tileTitles()).toEqual([TITLES[2], TITLES[1]]))
     expect(store.requestSimilar).toHaveBeenCalledWith(2, 1)
     await vi.waitFor(() => expect(arrangeCalls(fetchMock)).toHaveLength(2))
-    expect(within(document.body).getByText('Arranged by rules')).toBeInTheDocument()
+    expect(await within(document.body).findByText('Arranged by rules')).toBeInTheDocument()
   })
 })
