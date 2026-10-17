@@ -5,7 +5,7 @@ import { DETAIL, SUMMARIES } from '../test/fixtures'
 import { createFakeStore } from '../test/fakeStore'
 import { fail, mockApi, ok } from '../test/mockApi'
 import { renderApp } from '../test/renderApp'
-import { parseChartId } from './DetailPage'
+import { parseChartId } from '../chartId'
 
 describe('parseChartId', () => {
   it.each([

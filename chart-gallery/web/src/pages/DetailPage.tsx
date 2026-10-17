@@ -1,4 +1,5 @@
 import { Link, useParams } from 'react-router'
+import { parseChartId } from '../chartId'
 import { useChart, useChartList } from '../charts'
 import { TableChips } from '../components/ChartCard'
 import { ChartView } from '../components/ChartView'
@@ -9,11 +10,6 @@ import { useRelatedCharts } from '../semantic/useRelatedCharts'
 import { relativeTime } from '../time'
 import type { ChartSummary } from '../types'
 import { NotFound } from './NotFound'
-
-export function parseChartId(raw: string | undefined): number | null {
-  if (raw === undefined || !/^[1-9]\d{0,9}$/.test(raw)) return null
-  return Number(raw)
-}
 
 export function DetailPage() {
   const chartId = parseChartId(useParams().id)
