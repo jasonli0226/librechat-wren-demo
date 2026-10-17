@@ -12,5 +12,8 @@ export function swapLayout(update: () => void): void {
     update()
     return
   }
-  document.startViewTransition(() => flushSync(update))
+  const transition = document.startViewTransition(() => flushSync(update))
+  // A skipped transition rejects these; the layout still updates, so the rejection is noise.
+  transition?.ready?.catch(() => {})
+  transition?.finished?.catch(() => {})
 }
