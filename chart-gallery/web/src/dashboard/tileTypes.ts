@@ -44,7 +44,8 @@ export function fittingTypes(chart: ChartShape, rows: readonly Row[]): TileType[
 
   if (n === 1 && single && isNumeric(rows[0][chart.y_fields[0]])) types.push('stat')
   if (line) types.push('line')
-  if (!line && n >= MIN_LINE_ROWS && n <= MAX_STACKED_ROWS && single && chart.chart_type === 'pie') {
+  const hasNumbers = rows.some((r) => isNumeric(r[chart.y_fields[0]]))
+  if (!line && n >= MIN_LINE_ROWS && n <= MAX_STACKED_ROWS && single && chart.chart_type === 'pie' && hasNumbers) {
     types.push('stackedBar')
   }
   if (!line && n >= 1 && n <= MAX_BAR_ROWS && yScalesWithin(chart, rows)) types.push('bar')

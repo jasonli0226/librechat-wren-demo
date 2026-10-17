@@ -27,6 +27,15 @@ const detail = (id: number, rows: Row[], chart_type: ChartDetail['chart_type'] =
 })
 
 describe('fittingTypes', () => {
+  it('a saved pie whose y values are all non-numeric is not a stacked bar', () => {
+    const rows: Row[] = [
+      { k: 'a', v: null },
+      { k: 'b', v: 'n/a' },
+      { k: 'c', v: NaN },
+    ]
+    expect(fittingTypes(shape('pie'), rows)).toEqual(['table'])
+  })
+
   it('one numeric row is a stat', () => {
     const types = fittingTypes(shape('bar'), [{ k: 'a', v: 5 }])
     expect(types[0]).toBe('stat')
