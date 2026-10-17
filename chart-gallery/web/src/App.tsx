@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { lazy, type ReactNode, Suspense } from 'react'
 import { BrowserRouter, Link, Route, Routes } from 'react-router'
 import type { SemanticStore } from 'semantic-state'
 import { SemanticProvider } from 'semantic-state/react'
@@ -8,11 +8,22 @@ import { ListPage } from './pages/ListPage'
 import { NotFound } from './pages/NotFound'
 import type { ChartSummary } from './types'
 
+// json-render ships only with the dashboard route, so the list and detail pages do not pay for it.
+const DashboardPage = lazy(() => import('./pages/DashboardPage'))
+
 export function AppRoutes() {
   return (
     <Routes>
       <Route path="/" element={<ListPage />} />
       <Route path="/charts/:id" element={<DetailPage />} />
+      <Route
+        path="/dashboard"
+        element={
+          <Suspense fallback={<p className="status">Loading dashboard…</p>}>
+            <DashboardPage />
+          </Suspense>
+        }
+      />
       <Route path="*" element={<NotFound />} />
     </Routes>
   )

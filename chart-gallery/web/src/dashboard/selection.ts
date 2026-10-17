@@ -5,8 +5,8 @@ export const DEFAULT_MIN = 0.5
 export const DEFAULT_MAX = 6
 export const MODEL_WAIT_MS = 1500
 
-const MIN_BOUNDS = { lo: 0, hi: 1 } as const
-const MAX_BOUNDS = { lo: 1, hi: 12 } as const
+export const MIN_BOUNDS = { lo: 0, hi: 1 } as const
+export const MAX_BOUNDS = { lo: 1, hi: 12 } as const
 const MAX_QUERY_LENGTH = 200
 
 export type DashboardSource = { kind: 'chart'; id: number } | { kind: 'query'; q: string }
