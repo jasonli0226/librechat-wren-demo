@@ -181,6 +181,10 @@ def create_app(
         client_host = request.client.host if request.client else "unknown"
         if not arrange_limiter.allow(client_host):
             return _error(429, "too many requests")
+        # Only JSON: a cross-site text/plain POST needs no preflight and would spend the OpenRouter key.
+        media_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+        if media_type != "application/json":
+            return _error(415, "content type must be application/json")
         prompt = _read_prompt(settings.prompt_path)
         if arrange_llm is None or prompt is None:
             return _error(503, "AI arrangement disabled")
