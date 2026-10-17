@@ -33,7 +33,7 @@ describe('api', () => {
   it('arrangeDashboard posts tiles as JSON and returns spec and headlines', async () => {
     const result = { spec: '{"root":"a"}', headlines: { '1': { total: 5 } } }
     const fetchMock = mockApi({ 'POST /api/dashboards/arrange': ok(result) })
-    const tiles = [{ chart_id: 1, type: 'bar' as const, allowed_types: ['bar' as const, 'table' as const] }]
+    const tiles = [{ chart_id: 1, type: 'bar' as const, allowed_types: ['bar' as const, 'table' as const], rank: 0, confidence: null }]
     await expect(arrangeDashboard(tiles)).resolves.toEqual(result)
     const [, init] = fetchMock.mock.calls[0]
     expect(init?.method).toBe('POST')

@@ -20,6 +20,8 @@ class TileIn(BaseModel):
     chart_id: int
     type: TileType
     allowed_types: Annotated[list[TileType], Field(min_length=1, max_length=MAX_ALLOWED_TYPES)]
+    rank: int = Field(ge=0)  # 0 is the main item
+    confidence: float | None = Field(default=None, ge=0, le=1)  # match score; None for the seed chart
 
     @model_validator(mode="after")
     def _type_is_allowed(self) -> TileIn:
@@ -40,6 +42,12 @@ class ArrangeIn(BaseModel):
             raise ValueError("chart_id values must be unique")
         return self
 
+    @model_validator(mode="after")
+    def _ranks_are_a_permutation(self) -> ArrangeIn:
+        if sorted(tile.rank for tile in self.tiles) != list(range(len(self.tiles))):
+            raise ValueError("ranks must be exactly 0..n-1")
+        return self
+
 
 def build_user_message(charts: list[Mapping], tiles: list[TileIn], headlines: dict[int, dict]) -> str:
     """JSON array, in tile order, of what the model may know about each chart."""
@@ -52,6 +60,8 @@ def build_user_message(charts: list[Mapping], tiles: list[TileIn], headlines: di
                 "tables": list(chart["tables"]),
                 "type": tile.type,
                 "allowed_types": tile.allowed_types,
+                "rank": tile.rank,
+                "confidence": tile.confidence,
                 "columns": [chart["x_field"], *chart["y_fields"]],
                 "headline": headlines[tile.chart_id],
             }

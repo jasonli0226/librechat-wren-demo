@@ -30,6 +30,21 @@ export const SEEDS = [
     sql: 'SELECT loyalty_tier, COUNT(*) AS customers FROM customers GROUP BY 1 /* e2e seed */',
     rows: [{ loyalty_tier: 'gold', customers: 120 }, { loyalty_tier: 'silver', customers: 300 }],
   },
+  {
+    title: 'Basket size vs items',
+    description: 'Average basket value against average items per order, one point per store.',
+    chart_type: 'scatter',
+    x_field: 'avg_items',
+    y_fields: ['avg_basket'],
+    sql: 'SELECT s.store_name, AVG(i.items) AS avg_items, AVG(o.total_amount) AS avg_basket FROM stores s JOIN orders o ON o.store_id = s.store_id JOIN (SELECT order_id, COUNT(*) AS items FROM order_items GROUP BY 1) i ON i.order_id = o.order_id GROUP BY 1 /* e2e seed */',
+    rows: [
+      { avg_items: 1.8, avg_basket: 42.5 },
+      { avg_items: 2.4, avg_basket: 58 },
+      { avg_items: 3.1, avg_basket: 77.25 },
+      { avg_items: 3.9, avg_basket: 95 },
+      { avg_items: 4.6, avg_basket: 118.4 },
+    ],
+  },
 ]
 
 /**

@@ -153,7 +153,13 @@ function useRulesBuild(selection: Keyed<Outcome> | null): Keyed<Built> | null {
 }
 
 const toArrangeTiles = (plans: readonly TilePlan[]): ArrangeTile[] =>
-  plans.map((p) => ({ chart_id: p.chart.id, type: p.type, allowed_types: [...p.allowed] }))
+  plans.map((p, rank) => ({
+    chart_id: p.chart.id,
+    type: p.type,
+    allowed_types: [...p.allowed],
+    rank,
+    confidence: p.confidence,
+  }))
 
 interface Layout {
   spec: Spec

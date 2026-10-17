@@ -119,8 +119,13 @@ describe('DashboardPage', () => {
     expect(store.requestSimilar).toHaveBeenCalledWith(2, 5)
     const calls = arrangeCalls(fetchMock)
     expect(calls).toHaveLength(1)
-    const body = JSON.parse(String(calls[0][1]?.body)) as { tiles: { chart_id: number }[] }
+    const body = JSON.parse(String(calls[0][1]?.body)) as {
+      tiles: { chart_id: number; rank: number; confidence: number | null }[]
+    }
     expect(body.tiles.map((t) => t.chart_id)).toEqual([2, 1, 3])
+    expect(body.tiles.map((t) => t.rank)).toEqual([0, 1, 2])
+    expect(body.tiles[0].confidence).toBeNull()
+    expect(body.tiles[1].confidence).toBeCloseTo(0.8)
   })
 
   it('keeps the rules layout when the AI call fails', async () => {

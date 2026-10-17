@@ -50,6 +50,8 @@ export interface ArrangeTile {
   chart_id: number
   type: TileType
   allowed_types: TileType[]
+  rank: number
+  confidence: number | null
 }
 
 export const fetchChartData = (id: number, signal?: AbortSignal) =>

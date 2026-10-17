@@ -36,8 +36,14 @@ class FakeLlm:
         return self.result
 
 
-def tile(chart_id, type_="bar", allowed=None):
-    return {"chart_id": chart_id, "type": type_, "allowed_types": allowed or [type_]}
+def tile(chart_id, type_="bar", allowed=None, rank=0, confidence=None):
+    return {
+        "chart_id": chart_id,
+        "type": type_,
+        "allowed_types": allowed or [type_],
+        "rank": rank,
+        "confidence": confidence,
+    }
 
 
 def settings_for(tmp_path, write_prompt=True):
@@ -62,7 +68,7 @@ def seeded(tmp_path, llm):
 
 def test_returns_spec_and_headlines(tmp_path):
     llm = FakeLlm()
-    body = {"tiles": [tile(1, "bar", ["bar", "table"]), tile(2, "stat", ["stat"])]}
+    body = {"tiles": [tile(1, "bar", ["bar", "table"]), tile(2, "stat", ["stat"], rank=1)]}
     response = seeded(tmp_path, llm).post(URL, json=body)
     assert response.status_code == 200
     data = response.json()["data"]
@@ -101,8 +107,8 @@ def test_request_cannot_inject_titles(tmp_path):
 
 def test_rejects_duplicate_and_too_many_tiles(tmp_path):
     client = seeded(tmp_path, FakeLlm())
-    assert client.post(URL, json={"tiles": [tile(1), tile(1)]}).status_code == 422
-    assert client.post(URL, json={"tiles": [tile(i) for i in range(1, 14)]}).status_code == 422
+    assert client.post(URL, json={"tiles": [tile(1), tile(1, rank=1)]}).status_code == 422
+    assert client.post(URL, json={"tiles": [tile(i, rank=i - 1) for i in range(1, 14)]}).status_code == 422
 
 
 def test_rejects_type_not_in_allowed(tmp_path):
@@ -171,3 +177,23 @@ def test_headlines_merge_every_allowed_type(tmp_path):
     assert client.post("/internal/charts", json=item, headers=AUTH).status_code == 200
     data = client.post(URL, json=body).json()["data"]
     assert {"top_value", "scatter_points"} <= data["headlines"]["1"].keys()
+
+
+def test_user_message_includes_rank_and_confidence(tmp_path):
+    llm = FakeLlm()
+    tiles = [tile(1, confidence=None), tile(2, rank=1, confidence=0.62)]
+    assert seeded(tmp_path, llm).post(URL, json={"tiles": tiles}).status_code == 200
+    sent = json.loads(llm.calls[0][1])
+    assert [(t["rank"], t["confidence"]) for t in sent] == [(0, None), (1, 0.62)]
+
+
+def test_rejects_ranks_not_0_to_n_minus_1(tmp_path):
+    client = seeded(tmp_path, FakeLlm())
+    assert client.post(URL, json={"tiles": [tile(1, rank=0), tile(2, rank=2)]}).status_code == 422
+    assert client.post(URL, json={"tiles": [tile(1, rank=1), tile(2, rank=1)]}).status_code == 422
+
+
+def test_confidence_out_of_range_rejected(tmp_path):
+    client = seeded(tmp_path, FakeLlm())
+    assert client.post(URL, json={"tiles": [tile(1, confidence=1.5)]}).status_code == 422
+    assert client.post(URL, json={"tiles": [tile(1, confidence=-0.1)]}).status_code == 422
