@@ -2,7 +2,7 @@ import type { Row } from './dashboard/types'
 import type { ChartDetail } from './types'
 
 // Twin of api/gallery/shape.py; both are pinned by fixtures/chart-shapes.json.
-const DATE_LIKE = /^\d{4}-\d{2}(-\d{2})?([T ]\d{2}:\d{2}.*)?$/
+const DATE_LIKE = /^\d{4}-\d{2}(-\d{2})?([T ]\d{2}:\d{2}[^\n\r\u2028\u2029]*)?$/
 const MIN_LINE_ROWS = 2
 const YEAR_MIN = 1900
 const YEAR_MAX = 2100

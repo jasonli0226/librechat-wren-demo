@@ -493,6 +493,56 @@
     }
   },
   {
+    "name": "trailing newline among dates",
+    "chart": {
+      "x_field": "x",
+      "y_fields": [
+        "a"
+      ]
+    },
+    "rows": [
+      {
+        "x": "2024-01-01",
+        "a": 1
+      },
+      {
+        "x": "2024-01-02",
+        "a": 2
+      },
+      {
+        "x": "2024-01-01\n",
+        "a": 3
+      }
+    ],
+    "line_shaped": false,
+    "scatter": null
+  },
+  {
+    "name": "Arabic-Indic digit date",
+    "chart": {
+      "x_field": "x",
+      "y_fields": [
+        "a"
+      ]
+    },
+    "rows": [
+      {
+        "x": "2024-01-01",
+        "a": 1
+      },
+      {
+        "x": "2024-01-02",
+        "a": 2
+      },
+      {
+        "x": "\u0662\u0660\u0662\u0664-01-01",
+        "a": 3
+      }
+    ],
+    "line_shaped": false,
+    "scatter": null
+  },
+  {
     "name": "true as an x value",
     "chart": {
       "x_field": "x",
