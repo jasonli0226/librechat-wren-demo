@@ -6,13 +6,13 @@
 
 **Architecture:** The FastAPI gallery API gains two public endpoints: `GET /api/charts/{id}/data` (re-runs a saved chart's SQL through `wren-mcp`'s `run_sql` over MCP) and `POST /api/dashboards/arrange` (computes headline values from stored rows, calls OpenRouter with a fixed server-side prompt, returns the model's JSONL). The React SPA gains a lazy `/dashboard` route: it freezes a chart selection, types tiles from snapshot rows, renders a rules layout as a json-render spec, fetches live rows per tile, validates the AI spec, and swaps to it inside a View Transition.
 
-**Tech Stack:** Python 3.11, FastAPI, pydantic, `mcp` client (<2), httpx; React 19, react-router 8, recharts 3, `semantic-state` 0.1.0-experimental.1, `@json-render/core` + `@json-render/react` 0.21.1, zod 4; vitest, pytest, Playwright.
+**Tech Stack:** Python 3.11, FastAPI, pydantic, `mcp` client (<2), httpx; React 19, react-router 8, recharts 3, `semantic-state` 0.1.0-experimental.1, `@json-render/core` + `@json-render/react` 0.21.1, zod 4.6.7; vitest, pytest, Playwright.
 
 **Spec:** `docs/superpowers/specs/2026-10-17-dashboard-builder-design.md` (research: `docs/research/json-render.md`)
 
 ## Global Constraints
 
-- Pin `@json-render/core` and `@json-render/react` to exactly `0.21.1`; add `zod` `^4`.
+- Pin `@json-render/core` and `@json-render/react` to exactly `0.21.1` and `zod` to exactly `4.6.7` (the combination tested in the research; core carries its own `zod ^4.3.6`, so a different minor risks two copies — check `npm ls zod` shows one).
 - The browser never sends SQL or prompt text. Data and arrange endpoints take chart ids only; titles, descriptions, tables and headlines are read from the database.
 - Both new endpoints are public and **must** be rate-limited (per client and global); over the limit → HTTP 429 in the standard envelope `{success, data, error}`.
 - Live query row cap: 200. Per-query timeout: 10 s. LLM timeout: 8 s.
@@ -111,7 +111,7 @@ def test_denied_calls_do_not_extend_the_window():
 ```
 
 - [ ] **Step 2: Run** `cd chart-gallery/api && uv run pytest tests/test_config.py tests/test_ratelimit.py -v` → FAIL (missing fields / module).
-- [ ] **Step 3: Implement** the four `Settings` fields in `config.py` and `RateLimiter` in `ratelimit.py` (per-client and total `collections.deque` of timestamps; prune entries older than `window_s` on each call; keep it synchronous — the app runs one worker).
+- [ ] **Step 3: Implement** the four `Settings` fields in `config.py` and `RateLimiter` in `ratelimit.py` (per-client and total `collections.deque` of timestamps; prune entries older than `window_s` on each call; keep it synchronous — the app runs one worker). Add a module comment: clients are keyed by the socket peer address, which is correct only while nothing proxies the gallery; a reverse proxy in front would collapse every visitor into one bucket and needs trusted `X-Forwarded-For` handling.
 - [ ] **Step 4: Run** the same command → PASS; then `uv run pytest` → all PASS.
 - [ ] **Step 5: Commit** `git commit -m "feat: add dashboard settings and a sliding-window rate limiter"`
 
@@ -129,7 +129,7 @@ def test_denied_calls_do_not_extend_the_window():
 - Produces: `class WrenError(Exception)` (message is safe to log, not to return).
 - Produces: `QueryFn = Callable[[str], Awaitable[QueryResult]]`
 - Produces: `async def run_sql_with_session(session: ClientSession, sql: str, limit: int) -> QueryResult` — calls tool `run_sql` with `{"sql": sql, "limit": limit}`; reads `result.structuredContent` (wrenai 0.15.0 returns `{"columns", "rows", "row_count", "truncated"}`), falling back to `json.loads` of the first text content; `result.isError` or a malformed shape → `WrenError`.
-- Produces: `def make_wren_query(url: str, limit: int = 200, timeout: float = 10.0) -> QueryFn` — opens `streamablehttp_client(url)` + `ClientSession`, `initialize()`, then `run_sql_with_session`, all inside `asyncio.timeout(timeout)`. One session per call (handshake is cheap on the compose network; concurrency is capped in Task 3). Transport/HTTP errors → `WrenError`; timeout propagates as `TimeoutError`.
+- Produces: `def make_wren_query(url: str, limit: int = 200, timeout: float = 10.0) -> QueryFn` — opens `streamablehttp_client(url)` + `ClientSession`, `initialize()`, then `run_sql_with_session`, all inside `asyncio.timeout(timeout)`. One session per call (handshake is cheap on the compose network; concurrency is capped in Task 3). This deliberately departs from the design's "reuse one session" (the design doc now records it): the 10 s timeout covers handshake + query, and a 12-tile dashboard costs 12 handshakes. Transport/HTTP errors → `WrenError`; timeout propagates as `TimeoutError`.
 
 - [ ] **Step 1: Write failing tests** using an in-memory server (`mcp.shared.memory.create_connected_server_and_client_session` with a `FastMCP` whose `run_sql` tool is a fake), run via `asyncio.run` like `wren/tests/test_chart_tool.py`:
   - `test_returns_columns_rows_truncated` — fake returns `{"columns": ["store", "revenue"], "rows": [{"store": "A", "revenue": 1.5}], "row_count": 1, "truncated": False}` → result equals `{"columns": ["store", "revenue"], "rows": [{"store": "A", "revenue": 1.5}], "truncated": False}`.
@@ -215,7 +215,7 @@ Errors: unknown id → 404 `"chart not found"`; rate limited → 429 `"too many 
 - Produces: `create_app(..., llm: LlmFn | None = None)`; default built from settings only when `openrouter_key` is set. `POST /api/dashboards/arrange` → `envelope({"spec": <model text>, "headlines": {"<id>": {...}}})`.
 - Constants: `ARRANGE_PER_CLIENT = 6`, `ARRANGE_TOTAL = 30` (per 60 s).
 
-Errors: no `llm` or no readable prompt file → 503 `"AI arrangement disabled"`; unknown chart id → 422 `"unknown chart id <id>"`; 429 `"too many requests"`; `LlmError` → 502 `"AI arrangement failed"`; `TimeoutError` → 504 `"AI arrangement timed out"`. The prompt file is read per request from `settings.prompt_path`.
+Errors: no `llm` or no readable prompt file → 503 `"AI arrangement disabled"`; unknown chart id → 422 `"unknown chart id <id>"`; 429 `"too many requests"`; `LlmError` → 502 `"AI arrangement failed"`; `TimeoutError` → 504 `"AI arrangement timed out"`. The prompt file is read per request from `settings.prompt_path`. The rate limit is checked **first**, before body validation and the chart lookup, so rejected or id-probing requests still spend budget (the endpoint takes the raw `Request`, checks the limiter, then parses `ArrangeIn` itself and maps pydantic errors to 422). The request's `type` is untrusted: it only selects which headline shape is computed from the real stored rows, which is harmless.
 
 - [ ] **Step 1: Write failing tests**
   - `test_llm.py` with `httpx.MockTransport`: `test_sends_model_messages_and_auth` (assert URL, bearer header, model, two messages, temperature 0.2), `test_returns_message_content`, `test_non_200_raises_without_key` (`"sk-or-secret" not in str(exc)`), `test_timeout_raises_timeout_error`.
@@ -228,6 +228,7 @@ Errors: no `llm` or no readable prompt file → 503 `"AI arrangement disabled"`;
     - `test_disabled_without_llm_or_prompt` — app with `llm=None` → 503 `"AI arrangement disabled"`; app with missing prompt file → same.
     - `test_llm_failure_and_timeout` — `LlmError` → 502; `TimeoutError` → 504.
     - `test_rate_limit` — 6 calls OK, 7th → 429.
+    - `test_invalid_requests_count_against_the_limit` — 6 calls with unknown id 99 (422 each), then a valid call → 429.
     - `test_app_starts_without_openrouter_key` — `create_app(settings_without_key)` succeeds and `/healthz` is 200.
 - [ ] **Step 2: Run** `uv run pytest tests/test_llm.py tests/test_arrange.py -v` → FAIL.
 - [ ] **Step 3: Implement** `llm.py`, `arrange.py`, the endpoint (`async def`), the `llm` param; add the two env vars to `docker-compose.yml`.
@@ -239,7 +240,7 @@ Errors: no `llm` or no readable prompt file → 503 `"AI arrangement disabled"`;
 ### Task 6: json-render catalog and prompt
 
 **Files:**
-- Modify: `chart-gallery/web/package.json` (`npm i -E @json-render/core@0.21.1 @json-render/react@0.21.1 && npm i zod@^4`), `chart-gallery/Dockerfile`
+- Modify: `chart-gallery/web/package.json` (`npm i -E @json-render/core@0.21.1 @json-render/react@0.21.1 zod@4.6.7`; `npm ls zod` must show a single deduped copy), `chart-gallery/Dockerfile`
 - Create: `chart-gallery/web/src/dashboard/types.ts`, `chart-gallery/web/src/dashboard/catalog.ts`, `chart-gallery/web/src/dashboard/arrange-prompt.md`
 - Test: `chart-gallery/web/src/dashboard/catalog.test.ts`
 
@@ -332,11 +333,12 @@ Rules: `ranked === null` → use `fallback` (seed first, then fallback minus see
 
 **Interfaces:**
 - Consumes: `TilePlan`, `TILE_COMPONENT` (Task 6); `sharedTables` (`src/semantic/features.ts`).
-- Produces: `tileKey(chartId: number): string` → `` `tile-${chartId}` ``; `orderTiles(plans: readonly TilePlan[]): TilePlan[]` — greedy cluster: take the first remaining plan, then every remaining plan sharing a table with it (rank order), repeat; `buildRulesSpec(plans: readonly TilePlan[]): Spec` (json-render `Spec`) — root `dashboard` (`Dashboard`, `summary: ''`) → one `section-1` (`Section`, `title: ''`) → tiles: all stat tiles first (`quarter`), then the rest in cluster order: `line` → `full`; consecutive runs of other types pair as `half`, an odd run's last tile → `full`.
+- Produces: `tileKey(chartId: number): string` → `` `tile-${chartId}` ``; `orderTiles(plans: readonly TilePlan[]): TilePlan[]` — greedy cluster: take the first remaining plan, then every remaining plan sharing a table with it (rank order), repeat; `buildRulesSpec(plans: readonly TilePlan[]): Spec` (json-render `Spec`) — root `dashboard` (`Dashboard`, `summary: ''`) → one `section-1` (`Section`, `title: ''`) → tiles: all stat tiles first (`quarter`), then the rest in cluster order: every `line` → `full`; all other (non-stat, non-line) tiles form **one list** in cluster order, paired consecutively as `half`, and an odd leftover → `full`. To keep rows gap-free, walk in cluster order holding at most one unpaired half tile: the next non-line tile completes the pair; a line met while a tile is held is emitted right after that pair completes; a tile still held at the end becomes `full`.
 
 - [ ] **Step 1: Write failing tests**
   - `stats come first at quarter width`.
-  - `lines are full width; a run of three bars is half, half, full`.
+  - `lines are full width; three mixed non-line tiles (bar, table, bar) are half, half, full`.
+  - `a line between two bars does not split their pair` — cluster order bar, line, bar → spec order bar(half), bar(half), line(full).
   - `tiles sharing a table stay adjacent` — plans A(tables orders), B(inventory), C(orders) → order A, C, B.
   - `every element has children and the spec passes validateSpec` — `validateSpec(spec).valid === true`.
   - `tile element props are {chartId, width}` and each passes the catalog component's `props.safeParse`.
@@ -355,11 +357,11 @@ Rules: `ranked === null` → use `fallback` (seed first, then fallback minus see
 
 **Interfaces:**
 - Consumes: `catalog`, `TILE_COMPONENT`, `SUMMARY_MAX`, `TITLE_MAX`, `TilePlan`, `Headlines`.
-- Produces: `type ArrangeResult = { ok: true; spec: Spec; summaryDropped: boolean } | { ok: false; reason: string }`; `validateArrangement(text: string, plans: readonly TilePlan[], headlines: Headlines): ArrangeResult`; `summaryNumbersMatch(summary: string, headlines: Headlines, tileCount: number): boolean`.
+- Produces: `type ArrangeResult = { ok: true; spec: Spec; summaryDropped: boolean } | { ok: false; reason: string }`; `validateArrangement(text: string, plans: readonly TilePlan[], headlines: Headlines): ArrangeResult`; `summaryNumbersMatch(summary: string, headlines: Headlines, counts: { tiles: number; sections: number }): boolean`.
 
 Pipeline: drop lines that are code fences (```` ``` ````/```` ```jsonl ````); `compileSpecStream`; truncate `Dashboard.summary` to `SUMMARY_MAX` and `Section.title` to `TITLE_MAX` with a trailing `…`; `validateSpec` must be valid; reject a spec with `state` or any element with `on`, `watch`, `repeat`, `visible`; every element type known and `catalog.data.components[type].props.safeParse(props)` succeeds; root is `Dashboard`; root children are all `Section`; section children are all tiles; the multiset of tile `chartId`s equals the plan ids exactly once each; each tile's type is in `TILE_COMPONENT` of its plan's `allowed`. Then the summary check: on mismatch set summary to `''` and `summaryDropped: true`.
 
-Summary numbers: match `/[-+]?\$?\d[\d,]*(?:\.\d+)?\s*(?:%|k|m|b|thousand|million|billion)?/gi`; value × suffix multiplier; tolerance `0.5 × 10^-decimals × multiplier`; a number matches if within tolerance of any numeric headline value; always allowed: integers 1900–2100 and integers `≤ tileCount`.
+Summary numbers: match `/[-+]?\$?\d[\d,]*(?:\.\d+)?\s*(?:%|k|m|b|thousand|million|billion)?/gi`; value × suffix multiplier; tolerance `0.5 × 10^-decimals × multiplier`; a number matches if within tolerance of any numeric headline value; always allowed: integers 1900–2100, and integers equal to the tile count or the section count (not any small integer). Strip thousands separators before parsing.
 
 - [ ] **Step 1: Write failing tests** (build valid JSONL from a helper that turns a `Spec` into patch lines)
   - `accepts a valid two-section arrangement`.
@@ -371,7 +373,7 @@ Summary numbers: match `/[-+]?\$?\d[\d,]*(?:\.\d+)?\s*(?:%|k|m|b|thousand|millio
   - `rejects state and on`.
   - `rejects unparseable text` — `'not json'` → `ok: false`.
   - `drops only the summary when it cites an unknown number` — `summaryDropped: true`, sections intact.
-  - `summaryNumbersMatch` cases: `"$8.2M"` vs value `8_212_000` → true; `"12%"` vs `pct_change 12.0` → true; `"1.82 million"` vs `1_823_000` → true; `"$9M"` vs `8_212_000` → false; `"in 2025"` → true; `"3 charts"` with tileCount 6 → true.
+  - `summaryNumbersMatch` cases: `"$8.2M"` vs value `8_212_000` → true; `"12%"` vs `pct_change 12.0` → true; `"1.82 million"` vs `1_823_000` → true; `"$9M"` vs `8_212_000` → false; `"in 2025"` → true; `"6 charts"` with 6 tiles → true; `"3 charts"` with 6 tiles and 2 sections → false; `"$8,200,000"` vs `8_212_000` → false and vs `8_200_000` → true (comma stripping).
 - [ ] **Step 2: Run** `npx vitest run src/dashboard/arrangement.test.ts` → FAIL.
 - [ ] **Step 3: Implement** `arrangement.ts`.
 - [ ] **Step 4: Run** → PASS.
@@ -387,7 +389,7 @@ Summary numbers: match `/[-+]?\$?\d[\d,]*(?:\.\d+)?\s*(?:%|k|m|b|thousand|millio
 - Test: `chart-gallery/web/src/api.test.ts`, `chart-gallery/web/src/dashboard/tileData.test.tsx`
 
 **Interfaces:**
-- Produces (`api.ts`): `interface LiveData { rows: Row[]; columns: string[]; truncated: boolean; ran_at: string }`; `fetchChartData(id: number): Promise<LiveData>`; `interface ArrangeTile { chart_id: number; type: TileType; allowed_types: TileType[] }`; `arrangeDashboard(tiles: ArrangeTile[]): Promise<{ spec: string; headlines: Headlines }>` (POST JSON, same envelope/`ApiError` handling as `getJson`).
+- Produces (`api.ts`): `interface LiveData { rows: Row[]; columns: string[]; truncated: boolean; ran_at: string }`; `fetchChartData(id: number): Promise<LiveData>`; `interface ArrangeTile { chart_id: number; type: TileType; allowed_types: TileType[] }`; `arrangeDashboard(tiles: ArrangeTile[], signal?: AbortSignal): Promise<{ spec: string; headlines: Headlines }>` (POST JSON, same envelope/`ApiError` handling as `getJson`).
 - Produces (`tileData.ts`): `type TileData = { status: 'loading' } | { status: 'live'; rows: readonly Row[] } | { status: 'snapshot'; rows: readonly Row[]; since: string }`; `resolveLiveRows(plan: TilePlan, live: LiveData): TileData` — `snapshot` (with `since = plan.chart.updated_at`) when live rows are empty or any row lacks `x_field` or a y field, else `live`; `effectiveType(plan: TilePlan, data: TileData): TileType` — `plan.type` unless the data is `live` and `fittingTypes(chart, rows)` excludes it → `'table'`; `useTileData(plans: readonly TilePlan[]): ReadonlyMap<number, TileData>` — one `fetchChartData` per chart id, all in parallel, never refetched for the same id while mounted; errors → `snapshot`.
 
 - [ ] **Step 1: Write failing tests**
@@ -445,9 +447,9 @@ Summary numbers: match `/[-+]?\$?\d[\d,]*(?:\.\d+)?\s*(?:%|k|m|b|thousand|millio
 - Consumes: everything above; `useChartList`, `useSemantic`, `useSimilar`, `useSemanticSnapshot`, `rankByTables`, `filterCharts`, `fetchChart`.
 - Produces (`useDashboard.ts`): `useDashboard(params: DashboardParams, buildId: number): DashboardState` where `DashboardState = { status: 'invalid' } | { status: 'missing'; message: string } | { status: 'selecting' } | { status: 'ready'; plans: TilePlan[]; spec: Spec; note: string | null; belowThreshold: boolean; data: ReadonlyMap<number, TileData> }`.
 
-Behaviour: wait until the ranking is usable (model `ready`, `useSimilar` non-null / `useSemantic` `resultQuery === q`) or `MODEL_WAIT_MS` passes, then call `selectCharts` **once** for this `buildId`, with `ranked = null` if not usable (fallback: `rankByTables` for a seed, `filterCharts` for a query); store the result in state and never recompute it from later ranking updates. `from=<id>` not in the chart list → `missing` `"Chart <id> was not found."`; empty selection → `missing` `"No charts match “<q>”."`. Fetch `ChartDetail` for picked ids in parallel, `planTiles`, `buildRulesSpec`, then call `arrangeDashboard` once per `buildId`; on success run `validateArrangement` and, if `ok`, `swapLayout` to the AI spec (note `null`); on any failure keep the rules spec with note `Arranged by rules`. Stop waiting after 8 s.
+Behaviour: wait until the ranking is usable (model `ready`, `useSimilar` non-null / `useSemantic` `resultQuery === q`) or `MODEL_WAIT_MS` passes, then call `selectCharts` **once** for this `buildId`, with `ranked = null` if not usable (fallback: `rankByTables` for a seed, `filterCharts` for a query); store the result in state and never recompute it from later ranking updates. `from=<id>` not in the chart list → `missing` `"Chart <id> was not found."`; empty selection → `missing` `"No charts match “<q>”."`. Fetch `ChartDetail` for picked ids in parallel, `planTiles`, `buildRulesSpec`, then call `arrangeDashboard` once per `buildId`; on success run `validateArrangement` and, if `ok`, `swapLayout` to the AI spec (note `null`); on any failure keep the rules spec with note `Arranged by rules`. Stop waiting after 8 s. **Late results are ignored:** when the arrange promise settles, drop it if `buildId` has changed, the 8 s timeout already fired, or the layout was already swapped (track with a per-build ref; also abort the fetch via `AbortController` on timeout/rebuild/unmount — add an optional `signal` param to `arrangeDashboard`).
 
-Page: no source → message with link back to `/`. Controls: *Min score* (number, step 0.05), *Max tiles* (number), *Rebuild* (writes params via `setSearchParams` and bumps `buildId`). When `belowThreshold`, show `Lower Min score to see more charts.`.
+Page: no source → message with link back to `/`. The page is never blank: the shell (heading, controls) renders immediately; during `selecting` it shows `Finding related charts…`; once plans exist, tiles render as skeletons until rows arrive. Controls: *Min score* (number, step 0.05), *Max tiles* (number), *Rebuild* (writes params via `setSearchParams` and bumps `buildId`). When `belowThreshold`, show `Lower Min score to see more charts.`.
 
 - [ ] **Step 1: Write failing tests** (`renderApp('/dashboard?…')` with `mockApi` and the fake store; fake timers for the 1.5 s wait)
   - `builds a rules dashboard then swaps to the AI arrangement` — store `similar` answered; arrange returns valid JSONL for the picked ids → section heading visible, no `Arranged by rules`.
@@ -456,6 +458,8 @@ Page: no source → message with link back to `/`. Controls: *Min score* (number
   - `does not change the selection when the model becomes ready later` — after the fallback build, update the store with a different `similar` answer → same tile titles, arrange called once.
   - `unknown from id shows a message with a link back` and `a query with no matches shows a message`. (Review Focus 4)
   - `missing source shows a link back to the gallery`.
+  - `an AI result arriving after the 8 s timeout is ignored` — arrange resolves at 8.1 s (fake timers) → layout stays rules, `Arranged by rules` visible.
+  - `shows the shell and Finding related charts… while selecting`.
   - `Rebuild writes min and max to the URL and rebuilds`.
 - [ ] **Step 2: Run** `npx vitest run src/pages/DashboardPage.test.tsx` → FAIL.
 - [ ] **Step 3: Implement** `useDashboard.ts`, `DashboardPage.tsx`, the lazy route.
@@ -488,7 +492,7 @@ Behaviour: list page shows `filterCharts(charts, query)` until `useSemantic(quer
 ### Task 15: End-to-end test and docs
 
 **Files:**
-- Modify: `chart-gallery/web/scripts/e2e-gallery.sh` (export `WREN_MCP_URL=http://127.0.0.1:9/mcp`, unset `OPENROUTER_KEY`, set `GALLERY_PROMPT_PATH` to `../web/src/dashboard/arrange-prompt.md`), `README.md` (dashboard section: flow, params, `OPENROUTER_KEY`/`GALLERY_LLM_MODEL`, warm the model before a demo, rate limits)
+- Modify: `chart-gallery/web/scripts/e2e-gallery.sh` (export `WREN_MCP_URL=http://127.0.0.1:9/mcp`, unset `OPENROUTER_KEY`, set `GALLERY_PROMPT_PATH` to `../web/src/dashboard/arrange-prompt.md`), `README.md` (dashboard section: flow, params, `OPENROUTER_KEY`/`GALLERY_LLM_MODEL`, warm the model before a demo, rate limits and that they key on the peer address, so a reverse proxy needs `X-Forwarded-For` handling)
 - Create: `chart-gallery/web/e2e/dashboard.spec.ts`
 
 **Interfaces:**
@@ -496,8 +500,9 @@ Behaviour: list page shows `filterCharts(charts, query)` until `useSemantic(quer
 
 - [ ] **Step 1: Write the tests**
   - `search builds a rules dashboard with snapshot tiles` — go to `/`, type `store`, click **Build dashboard**, expect both store chart titles, `snapshot from` on each tile (Wren unreachable), and `Arranged by rules` (no key).
-  - `AI arrangement moves tiles into sections` — `page.route('**/api/dashboards/arrange', …)` reads the request's `tiles` and fulfills with a valid JSONL spec putting them in a `Stores` section with summary `"2 charts on stores."` and `headlines: {}`; open `/dashboard?from=1`; expect heading `Stores`, the `AI summary` label, and no `Arranged by rules`.
+  - `AI arrangement moves tiles into sections` — `page.route('**/api/dashboards/arrange', …)` reads the request's `tiles` and fulfills with a valid JSONL spec putting them in a `Stores` section with summary `"Store performance at a glance."` (no numbers, so the summary check cannot make the test fragile) and `headlines: {}`; open `/dashboard?from=1`; expect heading `Stores`, the `AI summary` label, and no `Arranged by rules`.
 - [ ] **Step 2: Run** `cd chart-gallery/web && npm run e2e` → PASS (both new and existing specs).
 - [ ] **Step 3: Write the README section.**
-- [ ] **Step 4: Full verification** — `cd chart-gallery/api && uv run pytest`; `cd ../web && npx vitest run && npm run build && npm run e2e`; `docker compose config -q` → all PASS / no output.
-- [ ] **Step 5: Commit** `git commit -m "test: add dashboard e2e tests and document the dashboard builder"`
+- [ ] **Step 4: Smoke-test the real model** (research marked OpenRouter behaviour unverified): with `OPENROUTER_KEY` set, `docker compose up -d --build chart-gallery`, open a dashboard, and confirm in the browser that the AI layout lands (no `Arranged by rules`). If the model wraps or garbles JSONL, record what it did in the README and adjust the prompt or `GALLERY_LLM_MODEL`.
+- [ ] **Step 5: Full verification** — `cd chart-gallery/api && uv run pytest`; `cd ../web && npx vitest run && npm run build && npm run e2e`; `docker compose config -q` → all PASS / no output.
+- [ ] **Step 6: Commit** `git commit -m "test: add dashboard e2e tests and document the dashboard builder"`

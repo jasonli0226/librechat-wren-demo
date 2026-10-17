@@ -131,7 +131,7 @@ list. Exact matching rules for ties and empty queries are the builder's call.
 - Config: `WREN_MCP_URL` (default `http://wren-mcp:7080/mcp`); add it to compose and the
   `wren-mcp` `MCP_ALLOWED_HOSTS` already covers `wren-mcp:*`.
 - Row cap: 200 (same as `save_chart`). Timeout per query: builder's call, around 10 s.
-- Reuse one MCP session per process where practical; the handshake should not run per tile.
+- One MCP session per query *(plan-review call, replacing "reuse one session per process")*: simpler, and the handshake is cheap on the compose network. The ~10 s timeout covers handshake plus query, and a 12-tile dashboard costs 12 handshakes; acceptable for the demo, bounded by the concurrency cap.
 - On failure (Wren error, timeout, MCP unreachable, rate limited) return an error envelope with
   a short message; the tile then falls back to the stored snapshot `rows` with a visible
   "snapshot from <date>" note, where the date is the chart's `updated_at` (rows are rewritten on
@@ -262,8 +262,8 @@ yields the same compact prompt.)
 
 4. Summary check: extract the numbers in `summary` and match each against the headline values
    sent, tolerant of formatting (`1823000` ≈ "$1.8M" ≈ "1.82 million": compare after parsing
-   suffixes, within the rounding the text shows). Years and small counts that equal a tile count
-   are allowed. If a number does not match, **drop only the summary** and keep the sections.
+   suffixes, within the rounding the text shows). Years, and integers equal to the tile count or
+   the section count, are allowed. If a number does not match, **drop only the summary** and keep the sections.
    Derived numbers ("revenue grew 12%") would not match a raw value, so the server-computed headline
    includes the derived values a summary is likely to cite — for line tiles the first value, last
    value and percent change; for bars the top item's share of the total — and the prompt says to
