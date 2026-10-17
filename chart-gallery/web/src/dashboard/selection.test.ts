@@ -33,10 +33,10 @@ describe('parseDashboardParams', () => {
 
   it('bad numbers fall back to defaults', () => {
     const p = parse('?q=x&min=abc&max=-1')
-    expect(p.min).toBe(0.5)
+    expect(p.min).toBe(0.3)
     expect(p.max).toBe(1)
     const d = parse('?q=x&min=&max=')
-    expect(d.min).toBe(0.5)
+    expect(d.min).toBe(0.3)
     expect(d.max).toBe(6)
   })
 

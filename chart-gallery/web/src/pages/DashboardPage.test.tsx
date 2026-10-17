@@ -217,14 +217,14 @@ describe('DashboardPage', () => {
     renderApp('/dashboard?q=loyalty', store)
     expect(await screen.findByRole('heading', { level: 1, name: 'Dashboard' })).toBeInTheDocument()
     expect(screen.getByText('Finding related charts…')).toBeInTheDocument()
-    expect(screen.getByRole('spinbutton', { name: 'Min score' })).toHaveValue(0.5)
+    expect(screen.getByRole('spinbutton', { name: 'Min score' })).toHaveValue(0.3)
     expect(screen.getByRole('spinbutton', { name: 'Max tiles' })).toHaveValue(6)
     expect(screen.getByRole('button', { name: 'Rebuild' })).toBeInTheDocument()
   })
 
   it('shows a hint to lower Min score when nothing passes it', async () => {
     mockApi({ ...chartRoutes(), [ARRANGE]: fail(503, 'model unavailable') })
-    const { store } = createFakeStore({ similar: { [similarKey(2, 5)]: [neighbour(1, 0.3)] } })
+    const { store } = createFakeStore({ similar: { [similarKey(2, 5)]: [neighbour(1, 0.2)] } })
     renderApp('/dashboard?from=2', store)
     expect(await screen.findByText('Lower Min score to see more charts.')).toBeInTheDocument()
     expect(tileTitles()).toEqual([TITLES[2]])

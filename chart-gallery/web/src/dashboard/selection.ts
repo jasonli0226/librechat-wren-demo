@@ -1,7 +1,7 @@
 import { parseChartId } from '../chartId'
 import type { ChartSummary } from '../types'
 
-export const DEFAULT_MIN = 0.5
+export const DEFAULT_MIN = 0.3
 export const DEFAULT_MAX = 6
 export const MODEL_WAIT_MS = 1500
 

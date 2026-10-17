@@ -38,7 +38,7 @@ test.beforeAll(async ({ request }) => {
 
 test('search builds a rules dashboard with snapshot tiles', async ({ page }) => {
   await page.goto('/')
-  await page.getByRole('searchbox').fill('physical store')
+  await page.getByRole('searchbox').fill('store')
   await page.getByRole('link', { name: 'Build dashboard' }).click()
 
   await expect(page).toHaveURL(/\/dashboard\?/)
