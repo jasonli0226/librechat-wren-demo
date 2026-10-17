@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import { ChartView, type ChartSpec } from './ChartView'
+import type { ScatterAxes } from '../chartShape'
+import { ChartView, scatterPoints, type ChartSpec } from './ChartView'
 
 const months = [
   { month: '2026-01-01T00:00:00', revenue: 10, orders: 3 },
@@ -51,5 +52,19 @@ describe('ChartView', () => {
     const rows = Array.from({ length: 6 }, (_, i) => ({ x: `c${i}`, y: i + 1 }))
     draw({ chart_type: 'scatter', x_field: 'x', y_fields: ['y'], rows })
     expect(screen.getByRole('table')).toBeInTheDocument()
+  })
+
+  it('tags each scatter point with its own series name', () => {
+    const rows = [{ x: 1, a: 2, b: 3 }]
+    const axes: ScatterAxes = { mode: 'x', x: 'x', ys: ['a', 'b'] }
+    expect(scatterPoints(rows, axes, 'a')[0]).toMatchObject({ x: 1, y: 2, series: 'a' })
+    expect(scatterPoints(rows, axes, 'b')[0]).toMatchObject({ x: 1, y: 3, series: 'b' })
+  })
+
+  it('renders the scatter table fallback without a responsive container', () => {
+    const rows = Array.from({ length: 6 }, (_, i) => ({ x: `c${i}`, y: i + 1 }))
+    const { container } = render(<ChartView chart={{ chart_type: 'scatter', x_field: 'x', y_fields: ['y'], rows }} />)
+    expect(screen.getByRole('table')).toBeInTheDocument()
+    expect(container.querySelector('.recharts-responsive-container')).toBeNull()
   })
 })
