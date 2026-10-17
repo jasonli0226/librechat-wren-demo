@@ -61,3 +61,17 @@ def test_dedup_key_differs_by_chart_type_and_is_stable():
     assert dedup_key(text, "bar") != dedup_key(text, "pie")
     assert dedup_key(text, "bar") == dedup_key(text, "bar")
     assert len(dedup_key(text, "bar")) == 64
+
+
+def test_fallback_keeps_quoted_text_verbatim():
+    gold = normalize_sql("SELEC x WHERE t = 'Gold'  AND n = \"Name\" (((")
+    assert gold.text == "selec x where t = 'Gold' and n = \"Name\" ((("
+    assert gold != normalize_sql("SELEC x WHERE t = 'gold' AND n = \"Name\" (((")
+
+
+def test_fallback_keeps_comment_markers_and_spaces_inside_literals():
+    assert normalize_sql("SELEC x WHERE t = 'a  -- b /* c */' (((").text == "selec x where t = 'a  -- b /* c */' ((("
+
+
+def test_fallback_handles_escaped_quotes():
+    assert normalize_sql("SELEC x WHERE t = 'O''Brien' -- note\n (((").text == "selec x where t = 'O''Brien' ((("

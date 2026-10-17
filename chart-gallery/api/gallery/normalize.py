@@ -11,8 +11,8 @@ from sqlglot import exp
 from sqlglot.errors import SqlglotError
 from sqlglot.optimizer.normalize_identifiers import normalize_identifiers
 
-_LINE_COMMENT = re.compile(r"--[^\n]*")
-_BLOCK_COMMENT = re.compile(r"/\*.*?\*/", re.DOTALL)
+# A quoted string or identifier (group 1, kept verbatim), or a comment (dropped).
+_FALLBACK_TOKEN = re.compile(r"""('(?:[^']|'')*'|"(?:[^"]|"")*")|--[^\n]*|/\*.*?\*/""", re.DOTALL)
 _WHITESPACE = re.compile(r"\s+")
 
 
@@ -41,6 +41,23 @@ def dedup_key(normalized_text: str, chart_type: str) -> str:
 
 
 def _fallback(sql: str) -> NormalizedSql:
-    text = _LINE_COMMENT.sub(" ", _BLOCK_COMMENT.sub(" ", sql))
-    text = _WHITESPACE.sub(" ", text).strip().rstrip(";").strip().lower()
+    """Drop comments, collapse whitespace and lowercase, but only outside quotes:
+    'Gold' and 'gold' are different values and must not share a dedup key."""
+    pieces: list[str] = []
+    unquoted = ""
+    position = 0
+    for match in _FALLBACK_TOKEN.finditer(sql):
+        unquoted += sql[position : match.start()]
+        position = match.end()
+        if match.group(1) is None:
+            unquoted += " "
+        else:
+            pieces += [_clean(unquoted), match.group(1)]
+            unquoted = ""
+    pieces.append(_clean(unquoted + sql[position:]))
+    text = "".join(pieces).strip().rstrip(";").strip()
     return NormalizedSql(text=text, tables=())
+
+
+def _clean(unquoted: str) -> str:
+    return _WHITESPACE.sub(" ", unquoted).lower()
