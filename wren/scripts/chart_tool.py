@@ -48,12 +48,15 @@ def _check_result(result: dict[str, Any], x_field: str, y_fields: list[str], cha
     missing = [field for field in (x_field, *y_fields) if field not in columns]
     if missing:
         return f"unknown field(s): {', '.join(missing)}; result columns are: {', '.join(columns)}"
-    numeric_fields = [("x", x_field)] if chart_type == "scatter" else []
-    numeric_fields += [("y", field) for field in y_fields]
-    for axis, field in numeric_fields:
+    # Scatter x must be numeric on every row (null included) or the dashboard cannot draw it as a scatter.
+    numeric_fields = [("x", x_field, False)] if chart_type == "scatter" else []
+    numeric_fields += [("y", field, True) for field in y_fields]
+    for axis, field, allow_null in numeric_fields:
         for row in rows:
             value = row.get(field)
-            if value is not None and (isinstance(value, bool) or not isinstance(value, (int, float))):
+            if value is None and allow_null:
+                continue
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
                 return f"{axis} field '{field}' has a non-numeric value {value!r}; cast it to numeric in SQL"
     return None
 

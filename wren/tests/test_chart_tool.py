@@ -129,8 +129,13 @@ def test_scatter_rejects_non_numeric_x(bad):
     assert f"x field 'price' has a non-numeric value {bad!r}; cast it to numeric in SQL" in result["error"]
 
 
-def test_scatter_allows_null_x():
-    assert scatter_call([{"price": None, "units": 3}])["saved"] is True
+def test_scatter_rejects_null_x():
+    def post(payload):
+        raise AssertionError("must not post")
+
+    result = scatter_call([{"price": None, "units": 3}], post=post)
+    assert result["saved"] is False
+    assert "x field 'price' has a non-numeric value None; cast it to numeric in SQL" in result["error"]
 
 
 def test_unsupported_type_message_lists_scatter():
