@@ -6,7 +6,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-ChartType = Literal["line", "bar", "pie"]
+ChartType = Literal["line", "bar", "pie", "scatter"]
 MAX_ROWS = 200
 MAX_Y_FIELDS = 5
 

@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS charts (
     dedup_key      TEXT NOT NULL UNIQUE,
     title          TEXT NOT NULL,
     description    TEXT NOT NULL,
-    chart_type     TEXT NOT NULL CHECK (chart_type IN ('line', 'bar', 'pie')),
+    chart_type     TEXT NOT NULL CHECK (chart_type IN ('line', 'bar', 'pie', 'scatter')),
     x_field        TEXT NOT NULL,
     y_fields       TEXT NOT NULL,
     sql            TEXT NOT NULL,
@@ -28,7 +28,9 @@ CREATE TABLE IF NOT EXISTS charts (
 )
 """
 
-_UPDATABLE = "title, description, chart_type, x_field, y_fields, sql, normalized_sql, tables, rows"
+SCATTER_TYPE = "scatter"  # the chart type whose absence from the CHECK marks an old table
+
+_UPDATABLE ="title, description, chart_type, x_field, y_fields, sql, normalized_sql, tables, rows"
 
 
 @dataclass(frozen=True)
@@ -68,6 +70,24 @@ class ChartRepository:
     def init_schema(self) -> None:
         with self._connect() as conn:
             conn.execute(SCHEMA)
+            self._migrate_chart_type_check(conn)
+
+    @staticmethod
+    def _migrate_chart_type_check(conn: sqlite3.Connection) -> None:
+        """SQLite cannot alter a CHECK, so a table made before scatter is rebuilt in one transaction."""
+        row = conn.execute("SELECT sql FROM sqlite_master WHERE name = 'charts'").fetchone()
+        if row is None or f"'{SCATTER_TYPE}'" in row["sql"]:
+            return
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            conn.execute(SCHEMA.replace("IF NOT EXISTS charts", "charts_new", 1))
+            conn.execute("INSERT INTO charts_new SELECT * FROM charts")
+            conn.execute("DROP TABLE charts")
+            conn.execute("ALTER TABLE charts_new RENAME TO charts")
+            conn.execute("COMMIT")
+        except Exception:
+            conn.execute("ROLLBACK")
+            raise
 
     def journal_mode(self) -> str:
         with self._connect() as conn:

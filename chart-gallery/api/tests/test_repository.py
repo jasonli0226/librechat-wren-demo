@@ -94,3 +94,64 @@ def test_rejects_unknown_chart_type(tmp_path):
     repo = make_repo(tmp_path)
     with pytest.raises(sqlite3.IntegrityError):
         repo.upsert(chart(chart_type="area"))
+
+
+# The table as it was created before scatter existed. Kept as a literal so these tests
+# keep representing old databases after SCHEMA changes.
+OLD_SCHEMA = """
+CREATE TABLE IF NOT EXISTS charts (
+    id             INTEGER PRIMARY KEY,
+    dedup_key      TEXT NOT NULL UNIQUE,
+    title          TEXT NOT NULL,
+    description    TEXT NOT NULL,
+    chart_type     TEXT NOT NULL CHECK (chart_type IN ('line', 'bar', 'pie')),
+    x_field        TEXT NOT NULL,
+    y_fields       TEXT NOT NULL,
+    sql            TEXT NOT NULL,
+    normalized_sql TEXT NOT NULL,
+    tables         TEXT NOT NULL,
+    rows           TEXT NOT NULL,
+    created_at     TEXT NOT NULL,
+    updated_at     TEXT NOT NULL
+)
+"""
+
+
+def make_old_db(tmp_path) -> None:
+    conn = sqlite3.connect(str(tmp_path / "charts.db"))
+    conn.execute(OLD_SCHEMA)
+    conn.execute(
+        "INSERT INTO charts VALUES (7, 'old', 'Old chart', 'Old description.', 'pie', 'store', "
+        "'[\"revenue\"]', 'SELECT 1', 'SELECT 1', '[\"orders\"]', '[{\"store\": \"A\", \"revenue\": 1}]', ?, ?)",
+        (T1, T1),
+    )
+    conn.commit()
+    conn.close()
+
+
+def table_sql(tmp_path) -> str:
+    conn = sqlite3.connect(str(tmp_path / "charts.db"))
+    try:
+        return conn.execute("SELECT sql FROM sqlite_master WHERE name = 'charts'").fetchone()[0]
+    finally:
+        conn.close()
+
+
+def test_init_schema_migrates_old_check(tmp_path):
+    make_old_db(tmp_path)
+    repo = make_repo(tmp_path, times=(T2,))
+    saved = repo.get(7)
+    assert saved["title"] == "Old chart"
+    assert saved["chart_type"] == "pie"
+    assert saved["rows"] == [{"store": "A", "revenue": 1}]
+    assert saved["created_at"] == T1
+    assert repo.upsert(chart(dedup_key="k2", chart_type="scatter")) == (8, "created")
+
+
+def test_init_schema_twice_is_noop(tmp_path):
+    make_old_db(tmp_path)
+    repo = make_repo(tmp_path)
+    sql_before = table_sql(tmp_path)
+    repo.init_schema()
+    assert table_sql(tmp_path) == sql_before
+    assert len(repo.list_summaries()) == 1

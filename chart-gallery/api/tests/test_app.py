@@ -61,6 +61,10 @@ def test_restyled_sql_updates_same_chart(client):
     assert response.json()["data"] == {"id": 1, "url": "http://gallery.test/charts/1", "status": "updated"}
 
 
+def test_scatter_chart_is_saved(client):
+    assert save(client, chart_type="scatter").status_code == 200
+
+
 def test_same_sql_as_pie_is_a_new_chart(client):
     save(client)
     assert save(client, chart_type="pie").json()["data"]["id"] == 2
