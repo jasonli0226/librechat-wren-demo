@@ -60,3 +60,22 @@ def test_timeout_raises_timeout_error():
 
     with pytest.raises(TimeoutError):
         run(handler)
+
+
+def test_total_timeout_bounds_a_slow_drip_response():
+    import time
+
+    class Drip(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            for _ in range(100):
+                await asyncio.sleep(0.05)
+                yield b" "
+
+    def handler(request):
+        return httpx.Response(200, stream=Drip())
+
+    llm = make_openrouter_llm(KEY, "test/model", timeout=0.2, transport=httpx.MockTransport(handler))
+    start = time.monotonic()
+    with pytest.raises(TimeoutError):
+        asyncio.run(llm("s", "u"))
+    assert time.monotonic() - start < 1.0

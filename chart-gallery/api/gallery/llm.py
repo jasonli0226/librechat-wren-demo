@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable
 
 import httpx
@@ -36,8 +37,12 @@ def make_openrouter_llm(
             ],
         }
         try:
-            async with httpx.AsyncClient(timeout=timeout, transport=transport) as client:
-                response = await client.post(OPENROUTER_URL, json=payload, headers={"Authorization": f"Bearer {key}"})
+            # httpx timeouts are per phase; one deadline bounds connect, send and the full body read.
+            async with asyncio.timeout(timeout):
+                async with httpx.AsyncClient(timeout=timeout, transport=transport) as client:
+                    response = await client.post(
+                        OPENROUTER_URL, json=payload, headers={"Authorization": f"Bearer {key}"}
+                    )
         except httpx.TimeoutException as exc:
             raise TimeoutError("OpenRouter request timed out") from exc
         except httpx.HTTPError as exc:
