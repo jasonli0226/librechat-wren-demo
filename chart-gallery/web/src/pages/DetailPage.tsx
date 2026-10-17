@@ -5,6 +5,7 @@ import { TableChips } from '../components/ChartCard'
 import { ChartView } from '../components/ChartView'
 import { DataTable } from '../components/DataTable'
 import { LIBRECHAT_URL } from '../config'
+import { dashboardHref } from '../dashboard/selection'
 import { RelatedCharts } from '../semantic/RelatedCharts'
 import { useRelatedCharts } from '../semantic/useRelatedCharts'
 import { relativeTime } from '../time'
@@ -52,6 +53,9 @@ function ChartDetailView({ id }: { readonly id: number }) {
           <code>{chart.sql}</code>
         </pre>
       </details>
+      <p>
+        <Link to={dashboardHref({ kind: 'chart', id })}>Build dashboard</Link>
+      </p>
       <p>
         <a href={LIBRECHAT_URL}>Ask a follow-up in LibreChat</a>
       </p>

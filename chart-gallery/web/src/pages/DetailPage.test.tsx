@@ -37,6 +37,12 @@ describe('DetailPage', () => {
     expect(within(related).getByRole('link', { name: /Revenue by store/ })).toHaveAttribute('href', '/charts/1')
   })
 
+  it('links Build dashboard from this chart', async () => {
+    mockApi({ '/api/charts/2': ok(DETAIL), '/api/charts': ok(SUMMARIES) })
+    renderApp('/charts/2')
+    expect(await screen.findByRole('link', { name: 'Build dashboard' })).toHaveAttribute('href', '/dashboard?from=2')
+  })
+
   it('shows a dash for null cells', async () => {
     mockApi({ '/api/charts/2': ok(DETAIL), '/api/charts': ok(SUMMARIES) })
     renderApp('/charts/2')

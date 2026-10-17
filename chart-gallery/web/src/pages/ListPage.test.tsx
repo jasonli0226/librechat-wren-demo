@@ -1,7 +1,8 @@
-import { screen } from '@testing-library/react'
+import { act, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { SUMMARIES } from '../test/fixtures'
+import { createFakeStore } from '../test/fakeStore'
 import { fail, mockApi, ok } from '../test/mockApi'
 import { renderApp } from '../test/renderApp'
 
@@ -51,5 +52,48 @@ describe('ListPage', () => {
     expect(await screen.findByText('<img src=x onerror=alert(1)>')).toBeInTheDocument()
     expect(container.querySelector('img')).toBeNull()
     expect(container.querySelector('script')).toBeNull()
+  })
+
+  it('shows substring matches until the semantic result arrives, then the ranked order', async () => {
+    mockApi({ '/api/charts': ok(SUMMARIES) })
+    const { store, update } = createFakeStore()
+    renderApp('/', store)
+    await userEvent.type(await screen.findByRole('searchbox'), 'store')
+    expect(screen.getByText('2 of 3')).toBeInTheDocument()
+    const titles = () => screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)
+    expect(titles()).toEqual(['Revenue by store', 'Return rate by store'])
+
+    const row = (i: number, confidence: number) => ({ id: SUMMARIES[i].id, item: SUMMARIES[i], score: confidence, confidence, reason: { kind: 'interest' as const, becauseOf: 0 } })
+    act(() => {
+      update({
+        results: {
+          store: {
+            ranked: [row(2, 0.9), row(1, 0.6), row(0, 0.4)],
+            extras: [],
+            interests: [],
+            rankMs: 1,
+            itemCount: 3,
+            updatedAt: 1,
+            networkRequests: 0,
+          },
+        },
+      })
+    })
+    expect(titles()).toEqual(['Customers by loyalty tier', 'Return rate by store', 'Revenue by store'])
+    expect(screen.getByText('3 of 3')).toBeInTheDocument()
+  })
+
+  it('links Build dashboard to the query', async () => {
+    mockApi({ '/api/charts': ok(SUMMARIES) })
+    renderApp('/')
+    await userEvent.type(await screen.findByRole('searchbox'), 'loyalty')
+    expect(screen.getByRole('link', { name: 'Build dashboard' })).toHaveAttribute('href', '/dashboard?q=loyalty')
+  })
+
+  it('hides Build dashboard for an empty query', async () => {
+    mockApi({ '/api/charts': ok(SUMMARIES) })
+    renderApp('/')
+    await screen.findByRole('searchbox')
+    expect(screen.queryByRole('link', { name: 'Build dashboard' })).toBeNull()
   })
 })
